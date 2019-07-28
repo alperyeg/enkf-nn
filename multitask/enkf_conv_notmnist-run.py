@@ -137,7 +137,7 @@ class MnistOptimizee:
         self.output_activity_train = []
         self.output_activity_test = []
 
-        self.targets.append(self.labels)
+        self.targets.append(self.labels.numpy())
 
     def create_individual(self):
         # get weights, biases from networks and flatten them
@@ -224,7 +224,7 @@ class MnistOptimizee:
                 print('New MNIST set used at generation {}'.format(
                     self.generation))
                 # append the outputs
-                self.targets.append(self.labels)
+                self.targets.append(self.labels.numpy())
             elif model.generation >= dataset_change and self.generation % generation_change == 0:
                 if model.generation == generation_change:
                     self.test_input, self.test_label = self.testiter_notmnist()
@@ -232,7 +232,7 @@ class MnistOptimizee:
                 print('New notMNIST set used at generation {}'.format(
                     self.generation))
                 # append the outputs
-                self.targets.append(self.labels)
+                self.targets.append(self.labels.numpy())
 
             outputs = self.conv_net(inputs)
             self.output_activity_train.append(outputs.numpy())
@@ -360,7 +360,7 @@ if __name__ == '__main__':
                 shuffle=False,
                 n_batches=1,
                 converge=False)
-    for i in range(100):
+    for i in range(1000):
         model.generation = i + 1
         if i == 0:
             out = model.create_individual()
@@ -390,7 +390,7 @@ if __name__ == '__main__':
         'train_targets': model.targets,
         'train_act': model.output_activity_train,
         'test_act': model.output_activity_test,
-        'test_targets': model.test_label,
+        'test_targets': model.test_label.numpy(),
         'ensemble': conv_ens,
     }
     np.save('conv_params.npy', param_dict)

@@ -83,9 +83,11 @@ class NotMNISTLoader:
         X_test = X_test.astype(np.float32)
 
         if normalize:
-            X_train = np.divide(X_train - X_train.mean(), X_train.std())
+            mean = kwargs.get('mean', 0.5)
+            std = kwargs.get('std', 0.5)
+            X_train = np.divide(X_train - mean, std)
             X_train = torch.from_numpy(X_train).view(-1, 1, 28, 28)
-            X_test = np.divide(X_test - X_test.mean(), X_test.std())
+            X_test = np.divide(X_test - mean, std)
             X_test = torch.from_numpy(X_test).view(-1, 1, 28, 28)
 
         train_set = TensorDataset(X_train, torch.from_numpy(y_train))

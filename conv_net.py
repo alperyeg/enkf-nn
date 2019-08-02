@@ -39,7 +39,7 @@ class ConvNet(nn.Module):
     def set_parameter(self, param_dict):
         st_dict = {}
         for key, value in param_dict.items():
-            st_dict[key] = torch.nn.Parameter(torch.Tensor(value))
+            st_dict[key] = torch.nn.Parameter(torch.Tensor(value.float()))
         self.load_state_dict(st_dict)
 
 # net = ConvNet()

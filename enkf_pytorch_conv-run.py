@@ -111,8 +111,9 @@ class DataLoader:
         return self.test_fashion.next()
 
 
-class MnistFashionOptimizee:
+class MnistFashionOptimizee(torch.nn.Module):
     def __init__(self, seed, n_ensembles, batch_size, root):
+        super(MnistFashionOptimizee, self).__init__()
 
         self.random_state = np.random.RandomState(seed=seed)
 
@@ -362,13 +363,13 @@ def jitter_ensembles(ens, ens_size):
 
 
 if __name__ == '__main__':
-    root = '/home/alper/Projects/enkf-nn'
+    root = '~/Documents/toolbox/L2L/l2l/optimizees/multitask/'
     n_ensembles = 5000
     conv_loss_mnist = []
     np.random.seed(0)
     batch_size = 64
     model = MnistFashionOptimizee(root=root, batch_size=batch_size, seed=0,
-                                  n_ensembles=n_ensembles)
+                                  n_ensembles=n_ensembles).to(device)
     conv_ens = None
     gamma = np.eye(10) * 0.01
     enkf = EnKF(tol=1e-5,

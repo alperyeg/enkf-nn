@@ -6,7 +6,6 @@ import torch
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset
-from torch.utils.data import TensorDataset
 
 
 class NotMNISTLoader:
@@ -14,6 +13,7 @@ class NotMNISTLoader:
     Convenience class to load the notMNIST dataset and to create `Pytorch` train
     and test `dataloaders`
     """
+
     def __init__(self, folder_path='.'):
         """
 
@@ -45,6 +45,7 @@ class NotMNISTLoader:
         letters = os.listdir(self.folder_path)
         # Retrieve pictures files names
         picture_files = {}
+        n_pictures = 0
         for letter in letters:
             fn = [name for name in os.listdir(os.path.join(self.folder_path, letter))
                   if name.endswith('.png')]
@@ -55,15 +56,17 @@ class NotMNISTLoader:
             files = picture_files[key]
             data[key] = []
             for f in files:
+                n_pictures += 1
                 try:
-                    data[key].append(plt.imread(os.path.join(self.folder_path, key, f)))
+                    data[key].append(plt.imread(
+                        os.path.join(self.folder_path, key, f)))
                 except Exception as e:
                     print(f, e)
 
         # Merge all data to one list
         X = []
         Y = []
-        X_nd = np.zeros(shape=(18724, 28, 28))
+        X_nd = np.zeros(shape=(n_pictures, 28, 28))
         for key, list_ in data.items():
             for img in list_:
                 X.append(img)
@@ -76,6 +79,10 @@ class NotMNISTLoader:
         labels = np.array(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'])
         lbl_enc.fit(labels)
         Y = lbl_enc.transform(Y)
+
+        # there are inconsistencies in the length of the dataset
+        # the length of the dataset is adapted to the legnth of the labels
+        X_nd = X_nd[:len(Y)]
 
         X_train, X_test, y_train, y_test = train_test_split(X_nd, Y,
                                                             test_size=test_size)
@@ -91,9 +98,11 @@ class NotMNISTLoader:
             X_test = torch.from_numpy(X_test).view(-1, 1, 28, 28)
 
         train_set = TensorDataset(X_train, torch.from_numpy(y_train))
-        self.train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=batch_size)
+        self.train_dataloader = torch.utils.data.DataLoader(
+            train_set, batch_size=batch_size, shuffle=True)
         test_set = TensorDataset(X_test, torch.from_numpy(y_test))
-        self.test_dataloader = torch.utils.data.DataLoader(test_set, batch_size=batch_size)
+        self.test_dataloader = torch.utils.data.DataLoader(
+            test_set, batch_size=batch_size)
         if save:
             self.save_to_disk(kwargs['filename'])
         return self.train_dataloader, self.test_dataloader
@@ -135,6 +144,8 @@ class NotMNISTLoader:
 
 
 if __name__ == '__main__':
-    not_mnist = NotMNISTLoader(folder_path='./notMNIST_small/')
-    not_mnist.create_dataloader(batch_size=32, save=True,
-                                **{'filename': './dataloader.npy'})
+    folder_path = '/home/yegenoglu/Documents/toolbox/backups/enkf-nn/multitask/notMNIST_large'
+    not_mnist = NotMNISTLoader(folder_path=folder_path)
+    not_mnist.create_dataloader(batch_size=128, save=True,
+                                **{'filename': './dataloader_notmnist_large.npy',
+                                   'shuffle': True})

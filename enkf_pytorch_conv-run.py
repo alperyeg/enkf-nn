@@ -21,6 +21,7 @@ class DataLoader:
 
 
     """
+
     def __init__(self):
         self.data_fashion = None
         self.data_mnist = None
@@ -199,6 +200,15 @@ class MnistFashionOptimizee(torch.nn.Module):
                         targets=self.labels,
                         input=self.inputs.squeeze())
 
+    def load_model(self, path='conv_params.npy'):
+        print('Loading model from path: {}'.format(path))
+        conv_params = np.load(path).item()
+        conv_ensembles = conv_params.get('ensemble')
+        return dict(conv_params=torch.as_tensor(np.array(conv_ensembles),
+                                                device=device),
+                    targets=self.labels,
+                    input=self.inputs.squeeze())
+
     @staticmethod
     def _he_init(weights, gain=0):
         """
@@ -247,7 +257,8 @@ class MnistFashionOptimizee(torch.nn.Module):
             conv_loss = self.criterion(outputs, labels).item()
             train_cost = _calculate_cost(_encode_targets(labels, 10),
                                          outputs.cpu().numpy(), 'MSE')
-            train_acc = score(labels.cpu().numpy(), np.argmax(outputs.cpu().numpy(), 1))
+            train_acc = score(labels.cpu().numpy(),
+                              np.argmax(outputs.cpu().numpy(), 1))
             print('Cost: ', train_cost)
             print('Accuracy: ', train_acc)
             print('Loss:', conv_loss)
@@ -258,7 +269,8 @@ class MnistFashionOptimizee(torch.nn.Module):
             print('---- Test -----')
             test_output = self.conv_net(self.test_input)
             test_output = test_output.cpu().numpy()
-            test_acc = score(self.test_label.cpu().numpy(), np.argmax(test_output, 1))
+            test_acc = score(self.test_label.cpu().numpy(),
+                             np.argmax(test_output, 1))
             test_cost = _calculate_cost(_encode_targets(self.test_label.cpu().numpy(), 10),
                                         test_output, 'MSE')
             print('Test accuracy', test_acc)
@@ -278,19 +290,19 @@ class MnistFashionOptimizee(torch.nn.Module):
                 'conv_loss': float(conv_loss),
                 'input': self.inputs.squeeze(),
                 'targets': self.labels
-                }
+            }
             # if self.generation % generation_change == 0:
-                # min_ens = ensembles.min()
-                # max_ens = ensembles.max()
-                # len_ens = len(ensembles.mean(0))
-                # ens_mean = ensembles.mean(0)
-                # ens_std = ensembles.std(0)
-                # for _ in range(100):
-                #   conv_params.append(
-                # ensembles.mean(0) + np.random.uniform(min_ens, max_ens,
-                #                                       len_ens))
-                #     ens_mean + np.random.normal(ens_mean, ens_std,
-                #                               size=ensembles.shape))
+            # min_ens = ensembles.min()
+            # max_ens = ensembles.max()
+            # len_ens = len(ensembles.mean(0))
+            # ens_mean = ensembles.mean(0)
+            # ens_std = ensembles.std(0)
+            # for _ in range(100):
+            #   conv_params.append(
+            # ensembles.mean(0) + np.random.uniform(min_ens, max_ens,
+            #                                       len_ens))
+            #     ens_mean + np.random.normal(ens_mean, ens_std,
+            #                               size=ensembles.shape))
         return outs
 
     def _shape_parameter_to_conv_net(self, params):
@@ -382,7 +394,12 @@ if __name__ == '__main__':
     for i in range(100):
         model.generation = i + 1
         if i == 0:
-            out = model.create_individual()
+            try:
+                out = model.load_model()
+            except FileNotFoundError as fe:
+                print(fe)
+                print('Model not found! Creating new individuals.')
+                out = model.create_individual()
             conv_ens = out['conv_params']
             out = model.set_parameters(conv_ens)
             print('loss {} generation {}'.format(out['conv_loss'],
@@ -401,8 +418,8 @@ if __name__ == '__main__':
         conv_loss_mnist.append(out['conv_loss'])
     param_dict = {
         'train_pred': model.train_pred,
-        'test_pred':model.test_pred,
-        'train_acc':model.train_acc,
+        'test_pred': model.test_pred,
+        'train_acc': model.train_acc,
         'test_acc': model.test_acc,
         'train_cost': model.train_cost,
         'test_cost': model.test_cost,
@@ -419,5 +436,3 @@ if __name__ == '__main__':
     # plotter = Plotter(d)
     # plotter.plot()
     # plotter.get_plots()
-
-

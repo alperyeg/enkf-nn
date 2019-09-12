@@ -40,16 +40,33 @@ else:
     test_loader_notmnist = not_mnist_dict['test_loader']
 
 
+class Views(nn.Module):
+    def __init__(self, shape):
+        super(Views, self).__init__()
+        self.shape = shape
+
+    def forward(self, x):
+        return x.view(*self.shape)
+
+
 class JVAE(nn.Module):
     def __init__(self):
         super(JVAE, self).__init__()
         # sharing layer
         # TODO: check if shared layer can go into the encoder blocks
-        self.fc_shared = nn.Linear(250, 30)
-        self.encoder_block1 = self.encoder_block()
-        self.encoder_block2 = self.encoder_block()
+        self.fc_shared = nn.Linear(30, 250)
+        self.views = Views((-1, 250))
+        self.encoder_conv_block1 = self.encoder_conv_block()
+        self.encoder_conv_block2 = self.encoder_conv_block()
+        self.encoder_block1 = self.encoder_lin_block()
+        self.encoder_block2 = self.encoder_lin_block()
         self.decoder_block1 = self.decoder_block()
         self.decoder_block2 = self.decoder_block()
+
+        self.block1 = nn.ModuleDict({'conv': self.encoder_conv_block1,
+                                     'linear': self.encoder_block1})
+        self.block2 = nn.ModuleDict({'conv': self.encoder_conv_block2,
+                                     'linear': self.encoder_block2})
 
         # self.encoder_block1 = nn.Sequential(
         #     nn.Linear(784, 1000),
@@ -62,14 +79,28 @@ class JVAE(nn.Module):
         #     nn.ReLU()
         # )
 
-        self.fc_mu1 = nn.Linear(30, 30)
-        self.fc_logvar1 = nn.Linear(30, 30)
+        self.fc_mu1 = nn.Linear(250, 30)
+        self.fc_logvar1 = nn.Linear(250, 30)
 
-        self.fc_mu2 = nn.Linear(30, 30)
-        self.fc_logvar2 = nn.Linear(30, 30)
+        self.fc_mu2 = nn.Linear(250, 30)
+        self.fc_logvar2 = nn.Linear(250, 30)
+
+    def encoder_conv_block(self):
+        return nn.Sequential(
+            nn.Conv2d(1, 20, kernel_size=5),
+            nn.ReLU(),
+            nn.MaxPool2d(2, stride=2),
+            nn.Conv2d(20, 50, kernel_size=5),
+            nn.ReLU(),
+            nn.MaxPool2d(2, stride=2),
+            nn.Conv2d(50, 250, kernel_size=4),
+            nn.ReLU(),
+            self.views,
+            nn.Linear(250, 30)
+        )
 
     @staticmethod
-    def encoder_block():
+    def encoder_lin_block():
         return nn.Sequential(
             nn.Linear(784, 1000),
             nn.ReLU(),
@@ -77,6 +108,7 @@ class JVAE(nn.Module):
             nn.ReLU(),
             nn.Linear(500, 250),
             nn.ReLU(),
+            nn.Linear(250, 30),
             nn.ReLU()
         )
 
@@ -108,9 +140,17 @@ class JVAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(self, x1, x2):
-        x1 = self.encoder_block1(x1.view(-1, 784))
-        x2 = self.encoder_block2(x2.view(-1, 784))
+    def forward(self, x1, x2, choice='conv'):
+        if choice == 'linear':
+            x1 = x1.view(-1, 784)
+            x2 = x2.view(-1, 784)
+        # x1 = self.encoder_block1(x1.view(-1, 784))
+        # x2 = self.encoder_block2(x2.view(-1, 784))
+
+        # x1 = self.encoder_conv_block1(x1)
+        x1 = self.block1[choice](x1)
+        x2 = self.block2[choice](x2)
+        # x2 = self.encoder_conv_block2(x2)
         x1 = F.relu(self.fc_shared(x1))
         x2 = F.relu(self.fc_shared(x2))
 
@@ -190,7 +230,7 @@ def train(epoch):
     print('====> Epoch: {} Average loss MNIST: {:.4f}'.format(
           epoch, train_loss1 / len(train_loader_mnist.dataset)))
     print('====> Epoch: {} Average loss NotMNIST: {:.4f}'.format(
-          epoch, train_loss2 / len(train_loader_notmnist.dataset)))
+          epoch, train_loss2 / len(train_loader_mnist.dataset)))
 
 
 def test(epoch):
@@ -256,9 +296,8 @@ if __name__ == "__main__":
     for epoch in range(1, config['epochs'] + 1):
         train(epoch)
         test(epoch)
-        # TODO check
-        # with torch.no_grad():
-        #     sample = torch.randn(30, 250).to(device)
-        #     sample = model.decoder_block1(sample).cpu()
-        #     save_image(sample.view(64, 1, 28, 28),
-        #                'results/sample_' + str(epoch) + '.png')
+        with torch.no_grad():
+            sample = torch.randn(128, 30).to(device)
+            sample = model.decoder_block1(sample).cpu()
+            save_image(sample.view(128, 1, 28, 28),
+                       'results/sample_' + str(epoch) + '.png')

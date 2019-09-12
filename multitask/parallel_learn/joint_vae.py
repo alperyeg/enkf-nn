@@ -46,44 +46,43 @@ class JVAE(nn.Module):
         # sharing layer
         # TODO: check if shared layer can go into the encoder blocks
         self.fc_shared = nn.Linear(250, 30)
+        self.encoder_block1 = self.encoder_block()
+        self.encoder_block2 = self.encoder_block()
+        self.decoder_block1 = self.decoder_block()
+        self.decoder_block2 = self.decoder_block()
 
-        self.encoder_block1 = nn.Sequential(
-            nn.Linear(784, 1000),
-            nn.ReLU(),
-            nn.Linear(1000, 500),
-            nn.ReLU(),
-            nn.Linear(500, 250),
-            nn.ReLU(),
-            # self.fc_shared,
-            nn.ReLU()
-        )
+        # self.encoder_block1 = nn.Sequential(
+        #     nn.Linear(784, 1000),
+        #     nn.ReLU(),
+        #     nn.Linear(1000, 500),
+        #     nn.ReLU(),
+        #     nn.Linear(500, 250),
+        #     nn.ReLU(),
+        #     # self.fc_shared,
+        #     nn.ReLU()
+        # )
+
         self.fc_mu1 = nn.Linear(30, 30)
         self.fc_logvar1 = nn.Linear(30, 30)
-
-        self.decoder_block1 = nn.Sequential(
-            nn.Linear(30, 250),
-            nn.ReLU(),
-            nn.Linear(250, 500),
-            nn.ReLU(),
-            nn.Linear(500, 1000),
-            nn.ReLU(),
-            nn.Linear(1000, 784),
-            nn.Sigmoid()
-        )
-
-        self.encoder_block2 = nn.Sequential(
-            nn.Linear(784, 1000),
-            nn.ReLU(),
-            nn.Linear(1000, 500),
-            nn.ReLU(),
-            nn.Linear(500, 250),
-            nn.ReLU()
-        )
 
         self.fc_mu2 = nn.Linear(30, 30)
         self.fc_logvar2 = nn.Linear(30, 30)
 
-        self.decoder_block2 = nn.Sequential(
+    @staticmethod
+    def encoder_block():
+        return nn.Sequential(
+            nn.Linear(784, 1000),
+            nn.ReLU(),
+            nn.Linear(1000, 500),
+            nn.ReLU(),
+            nn.Linear(500, 250),
+            nn.ReLU(),
+            nn.ReLU()
+        )
+
+    @staticmethod
+    def decoder_block():
+        return nn.Sequential(
             nn.Linear(30, 250),
             nn.ReLU(),
             nn.Linear(250, 500),

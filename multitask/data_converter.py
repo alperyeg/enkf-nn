@@ -25,13 +25,13 @@ class NotMNISTLoader:
         self.test_targets = None
         self.folder_path = folder_path
 
-    def create_dataloader(self, batch_size=32, normalize=True, test_size=0.3,
+    def create_dataloader(self, batch_size=32, standardize=True, test_size=0.3,
                           save=False, **kwargs):
         """
         Creates train and test `Pytorch` dataloaders
 
         :param batch_size: int, size of the batch
-        :param normalize: bool, indicates if the train and test set should
+        :param standardize: bool, indicates if the train and test set should
                           normalized by :math:`\\frac{x - \\mu}{\\sigma}`
         :param test_size: float, Percentage to split the dataset to train and
                           test, should be in [0,1)
@@ -89,13 +89,13 @@ class NotMNISTLoader:
         X_train = X_train.astype(np.float32)
         X_test = X_test.astype(np.float32)
 
-        if normalize:
+        if standardize:
             mean = kwargs.get('mean', 0.5)
             std = kwargs.get('std', 0.5)
             X_train = np.divide(X_train - mean, std)
-            X_train = torch.from_numpy(X_train).view(-1, 1, 28, 28)
             X_test = np.divide(X_test - mean, std)
-            X_test = torch.from_numpy(X_test).view(-1, 1, 28, 28)
+        X_train = torch.from_numpy(X_train).view(-1, 1, 28, 28)
+        X_test = torch.from_numpy(X_test).view(-1, 1, 28, 28)
 
         train_set = TensorDataset(X_train, torch.from_numpy(y_train))
         self.train_dataloader = torch.utils.data.DataLoader(
@@ -146,6 +146,6 @@ class NotMNISTLoader:
 if __name__ == '__main__':
     folder_path = '/home/yegenoglu/Documents/toolbox/backups/enkf-nn/multitask/notMNIST_large'
     not_mnist = NotMNISTLoader(folder_path=folder_path)
-    not_mnist.create_dataloader(batch_size=128, save=True,
+    not_mnist.create_dataloader(batch_size=128, save=True, standardize=False,
                                 **{'filename': './dataloader_notmnist_large.npy',
                                    'shuffle': True})

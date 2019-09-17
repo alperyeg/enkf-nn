@@ -2,6 +2,7 @@ import os
 import torch
 import torch.utils.data
 import yaml
+from tensorboardX import SummaryWriter
 from torch import nn, optim
 from torch.nn import functional as F
 from torchvision import datasets, transforms
@@ -9,6 +10,7 @@ from torchvision.utils import save_image
 from multitask.data_converter import NotMNISTLoader
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+writer = SummaryWriter()
 
 with open('config.yaml', 'r') as stream:
     try:
@@ -55,6 +57,10 @@ class JVAE(nn.Module):
         # sharing layer
         # TODO: check if shared layer can go into the encoder blocks
         self.fc_shared = nn.Linear(30, 250)
+        # Layer for classification
+        self.classification_out1 = nn.Linear(30, 10)
+        self.classification_out2 = nn.Linear(30, 10)
+
         self.views = Views((-1, 250))
         self.encoder_conv_block1 = self.encoder_conv_block()
         self.encoder_conv_block2 = self.encoder_conv_block()
@@ -167,6 +173,8 @@ class JVAE(nn.Module):
             'decode2': self.decoder_block2(z2),
             'mu2': mu2,
             'logvar2': logvar2,
+            'classification1': F.softmax(F.relu(self.classification_out1(z1)), dim=1),
+            'classification2': F.softmax(F.relu(self.classification_out2(z2)), dim=1),
         }
         return outs
 
@@ -187,13 +195,21 @@ def loss_function(recon_x, x, mu, logvar):
     return BCE + KLD
 
 
+def loss_function_classification(recon_x, x, mu, logvar, output, target):
+    loss_r = loss_function(recon_x, x, mu, logvar)
+    loss_c = F.cross_entropy(output, target)
+    return loss_c + loss_r
+
+
 def train(epoch):
     model.train()
     train_loss1 = 0
     train_loss2 = 0
     for batch_idx, (data_mnist, data_notmnist) in enumerate(
             zip(train_loader_mnist, train_loader_notmnist)):
+        labels_mnist = data_mnist[1].to(device)
         data_mnist = data_mnist[0].to(device)
+        labels_notmnist = data_notmnist[1].to(device)
         data_notmnist = data_notmnist[0].to(device)
         optimizer.zero_grad()
 
@@ -207,6 +223,10 @@ def train(epoch):
         # calculate losses
         # first loss 1
         loss1 = loss_function(recon_batch1, data_mnist, mu1, logvar1)
+        # loss1 = loss_function_classification(recon_batch1, data_mnist,
+        #                                       mu1, logvar1,
+        #                                       outs['classification1'],
+        #                                       labels_mnist)
         loss1.backward()
         train_loss1 += loss1.item()
         # now loss 2
@@ -221,16 +241,24 @@ def train(epoch):
                 len(data_mnist), len(train_loader_mnist.dataset),
                 100. * batch_idx / len(train_loader_mnist),
                 loss1.item() / len(data_mnist)))
+            iteration = batch_idx * len(data_mnist) + ((epoch - 1) * len(train_loader_mnist.dataset))
+            writer.add_scalar('train_loss 1', loss1.item(), iteration)
             print('Train Epoch NotMNIST: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx *
-                len(data_notmnist), len(train_loader_notmnist.dataset),
+                epoch, batch_idx * len(data_notmnist),
+                len(train_loader_notmnist.dataset),
                 100. * batch_idx / len(train_loader_notmnist),
                 loss2.item() / len(data_notmnist)))
-
+            print('Classification loss {}'.format(loss1.item()))
+            writer.add_scalar('Classification loss', loss1.item(), iteration)
+            writer.add_scalar('train_loss 2', loss2.item(), iteration)
     print('====> Epoch: {} Average loss MNIST: {:.4f}'.format(
           epoch, train_loss1 / len(train_loader_mnist.dataset)))
+    writer.add_scalar('average loss 1',
+                      train_loss1 / len(train_loader_mnist.dataset), epoch)
     print('====> Epoch: {} Average loss NotMNIST: {:.4f}'.format(
           epoch, train_loss2 / len(train_loader_mnist.dataset)))
+    writer.add_scalar('average loss 2',
+                      train_loss2 / len(train_loader_mnist.dataset), epoch)
 
 
 def test(epoch):
@@ -279,9 +307,11 @@ def test(epoch):
 
     test_loss1 /= len(test_loader_mnist.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss1))
+    writer.add_scalar('test loss 1', test_loss1, 1)
 
     test_loss2 /= len(test_loader_mnist.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss2))
+    writer.add_scalar('test loss 2', test_loss2, 1)
 
 
 if __name__ == "__main__":
@@ -301,3 +331,4 @@ if __name__ == "__main__":
             sample = model.decoder_block1(sample).cpu()
             save_image(sample.view(128, 1, 28, 28),
                        'results/sample_' + str(epoch) + '.png')
+writer.close()

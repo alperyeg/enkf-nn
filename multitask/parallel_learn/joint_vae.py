@@ -7,7 +7,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
-from multitask.data_converter import NotMNISTLoader
+from data_converter import NotMNISTLoader
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 writer = SummaryWriter()
@@ -61,18 +61,18 @@ class JVAE(nn.Module):
         self.classification_out1 = nn.Linear(30, 10)
         self.classification_out2 = nn.Linear(30, 10)
 
-        self.views = Views((-1, 250))
-        self.encoder_conv_block1 = self.encoder_conv_block()
-        self.encoder_conv_block2 = self.encoder_conv_block()
-        self.encoder_block1 = self.encoder_lin_block()
-        self.encoder_block2 = self.encoder_lin_block()
-        self.decoder_block1 = self.decoder_block()
-        self.decoder_block2 = self.decoder_block()
-
-        self.block1 = nn.ModuleDict({'conv': self.encoder_conv_block1,
-                                     'linear': self.encoder_block1})
-        self.block2 = nn.ModuleDict({'conv': self.encoder_conv_block2,
-                                     'linear': self.encoder_block2})
+        self.block1 = nn.ModuleDict({
+            'conv_enc': self.encoder_conv_block(),
+            'linear_enc': self.encoder_lin_block(),
+            'conv_dec': self.decoder_conv_block(),
+            'linear_dec': self.decoder_lin_block()
+        })
+        self.block2 = nn.ModuleDict({
+            'conv_enc': self.encoder_conv_block(),
+            'linear_enc': self.encoder_lin_block(),
+            'conv_dec': self.decoder_conv_block(),
+            'linear_dec': self.decoder_lin_block()
+        })
 
         # self.encoder_block1 = nn.Sequential(
         #     nn.Linear(784, 1000),
@@ -94,40 +94,66 @@ class JVAE(nn.Module):
     def encoder_conv_block(self):
         return nn.Sequential(
             nn.Conv2d(1, 20, kernel_size=5),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(20, 50, kernel_size=5),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(50, 250, kernel_size=4),
-            nn.ReLU(),
-            self.views,
+            nn.LeakyReLU(),
+            Views((-1, 250)),
             nn.Linear(250, 30)
+
+            # nn.Conv2d(1, 16, kernel_size=6, stride=2),
+            # nn.LeakyReLU(),
+            # nn.Conv2d(16, 32, kernel_size=4, stride=2),
+            # nn.LeakyReLU(),
+            # nn.Conv2d(32, 64, kernel_size=2, stride=2),
+            # nn.LeakyReLU(),
+            # Views((-1, 256)),
+            # nn.Linear(256, 30)
         )
 
     @staticmethod
     def encoder_lin_block():
         return nn.Sequential(
             nn.Linear(784, 1000),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(1000, 500),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(500, 250),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(250, 30),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
 
     @staticmethod
-    def decoder_block():
+    def decoder_lin_block():
         return nn.Sequential(
             nn.Linear(30, 250),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(250, 500),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(500, 1000),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(1000, 784),
+            nn.Sigmoid()
+        )
+
+    @staticmethod
+    def decoder_conv_block():
+        return nn.Sequential(
+            nn.Linear(30, 64*2*2),
+            nn.LeakyReLU(),
+            Views((-1, 64, 2, 2)),
+            nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2, padding=0),
+            nn.LeakyReLU(),
+            # nn.BatchNorm2d(32),
+            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=3, padding=1),
+            nn.LeakyReLU(),
+            # nn.BatchNorm2d(16),
+            nn.ConvTranspose2d(16, 1, kernel_size=6, stride=3, padding=4),
+            nn.LeakyReLU(),
             nn.Sigmoid()
         )
 
@@ -154,8 +180,8 @@ class JVAE(nn.Module):
         # x2 = self.encoder_block2(x2.view(-1, 784))
 
         # x1 = self.encoder_conv_block1(x1)
-        x1 = self.block1[choice](x1)
-        x2 = self.block2[choice](x2)
+        x1 = self.block1[choice + '_enc'](x1)
+        x2 = self.block2[choice + '_enc'](x2)
         # x2 = self.encoder_conv_block2(x2)
         x1 = F.relu(self.fc_shared(x1))
         x2 = F.relu(self.fc_shared(x2))
@@ -167,14 +193,14 @@ class JVAE(nn.Module):
         z2 = self.reparameterize(mu2, logvar2)
 
         outs = {
-            'decode1': self.decoder_block1(z1),
+            'decode1': self.block1['linear_dec'](z1),
             'mu1': mu1,
             'logvar1': logvar1,
-            'decode2': self.decoder_block2(z2),
+            'decode2': self.block2['linear_dec'](z2),
             'mu2': mu2,
             'logvar2': logvar2,
-            'classification1': F.softmax(F.relu(self.classification_out1(z1)), dim=1),
-            'classification2': F.softmax(F.relu(self.classification_out2(z2)), dim=1),
+            'classification1': F.relu(self.classification_out1(z1)),
+            'classification2': F.relu(self.classification_out2(z2)),
         }
         return outs
 
@@ -197,7 +223,7 @@ def loss_function(recon_x, x, mu, logvar):
 
 def loss_function_classification(recon_x, x, mu, logvar, output, target):
     loss_r = loss_function(recon_x, x, mu, logvar)
-    loss_c = F.cross_entropy(output, target)
+    loss_c = F.cross_entropy(output, target, reduction='sum')
     return loss_c + loss_r
 
 
@@ -224,13 +250,16 @@ def train(epoch):
         # first loss 1
         loss1 = loss_function(recon_batch1, data_mnist, mu1, logvar1)
         # loss1 = loss_function_classification(recon_batch1, data_mnist,
-        #                                       mu1, logvar1,
-        #                                       outs['classification1'],
-        #                                       labels_mnist)
+        #                                      mu1, logvar1,
+        #                                      outs['classification1'],
+        #                                      labels_mnist)
         loss1.backward()
         train_loss1 += loss1.item()
         # now loss 2
         loss2 = loss_function(recon_batch2, data_notmnist, mu2, logvar2)
+        # loss2 = loss_function_classification(recon_batch2, data_notmnist, mu2,
+        #                                      logvar2, outs['classification2'],
+        #                                      labels_notmnist)
         loss2.backward()
         train_loss2 += loss2.item()
 
@@ -241,7 +270,9 @@ def train(epoch):
                 len(data_mnist), len(train_loader_mnist.dataset),
                 100. * batch_idx / len(train_loader_mnist),
                 loss1.item() / len(data_mnist)))
-            iteration = batch_idx * len(data_mnist) + ((epoch - 1) * len(train_loader_mnist.dataset))
+            iteration = batch_idx * \
+                len(data_mnist) + ((epoch - 1) *
+                                   len(train_loader_mnist.dataset))
             writer.add_scalar('train_loss 1', loss1.item(), iteration)
             print('Train Epoch NotMNIST: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data_notmnist),
@@ -291,8 +322,8 @@ def test(epoch):
                 n = min(data_notmnist.size(0), 8)
                 comparison2 = torch.cat([data_notmnist[:n],
                                          recon_batch2.view(
-                                             config['batch_size'], 1, 28, 28)[
-                                         :n]])
+                    config['batch_size'], 1, 28, 28)[
+                    :n]])
                 results_dir = config['results_dir']
                 if not os.path.exists(results_dir):
                     os.mkdir(results_dir)
@@ -331,4 +362,6 @@ if __name__ == "__main__":
             sample = model.decoder_block1(sample).cpu()
             save_image(sample.view(128, 1, 28, 28),
                        'results/sample_' + str(epoch) + '.png')
+    torch.save(model.state_dict(),
+               config['results_dir'] + 'model_ep{}.pt'.format(config['epochs']))
 writer.close()

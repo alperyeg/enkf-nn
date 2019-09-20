@@ -26,15 +26,19 @@ class NotMNISTLoader:
         self.folder_path = folder_path
 
     def create_dataloader(self, batch_size=32, standardize=True, test_size=0.3,
-                          save=False, **kwargs):
+                          train_size=None, save=False, **kwargs):
         """
         Creates train and test `Pytorch` dataloaders
 
         :param batch_size: int, size of the batch
         :param standardize: bool, indicates if the train and test set should
                           normalized by :math:`\\frac{x - \\mu}{\\sigma}`
-        :param test_size: float, Percentage to split the dataset to train and
-                          test, should be in [0,1)
+        :param test_size: float or int, If float: Percentage to split the
+                          dataset to train and test, should be in [0,1)
+                          If int: Absolute number for the test set size
+        :param train_size: float or int, float or int, If float: Percentage to
+                          split the dataset to train and test, should be in [0,1)
+                          If int: Absolute number of the train set size
         :param save: bool, If the created dataloaders should be saved as a dictionary,
                             path filename should be given in kwargs as `filename`
                             See also `save_to_disk`
@@ -85,6 +89,7 @@ class NotMNISTLoader:
         X_nd = X_nd[:len(Y)]
 
         X_train, X_test, y_train, y_test = train_test_split(X_nd, Y,
+                                                            train_size=train_size,
                                                             test_size=test_size)
         X_train = X_train.astype(np.float32)
         X_test = X_test.astype(np.float32)
@@ -102,7 +107,7 @@ class NotMNISTLoader:
             train_set, batch_size=batch_size, shuffle=True)
         test_set = TensorDataset(X_test, torch.from_numpy(y_test))
         self.test_dataloader = torch.utils.data.DataLoader(
-            test_set, batch_size=batch_size)
+            test_set, batch_size=batch_size, shuffle=True)
         if save:
             self.save_to_disk(kwargs['filename'])
         return self.train_dataloader, self.test_dataloader
@@ -147,5 +152,6 @@ if __name__ == '__main__':
     folder_path = '/home/yegenoglu/Documents/toolbox/backups/enkf-nn/multitask/notMNIST_large'
     not_mnist = NotMNISTLoader(folder_path=folder_path)
     not_mnist.create_dataloader(batch_size=128, save=True, standardize=False,
-                                **{'filename': './dataloader_notmnist_large.npy',
+                                train_size=60000, test_size=10000,
+                                **{'filename': './dataloader_notmnist.npy',
                                    'shuffle': True})

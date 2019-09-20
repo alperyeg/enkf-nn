@@ -35,6 +35,7 @@ not_mnist = NotMNISTLoader(folder_path=config['folder_path'])
 if config['create_dataloader']:
     train_loader_notmnist, test_loader_notmnist = not_mnist.create_dataloader(
         batch_size=config['batch_size'], save=True, test_size=10000,
+        train_size=60000,
         **{'filename': config['filename']})
 else:
     not_mnist_dict = not_mnist.load_from_file(config['filename'])
@@ -94,22 +95,22 @@ class JVAE(nn.Module):
     def encoder_conv_block(self):
         return nn.Sequential(
             nn.Conv2d(1, 20, kernel_size=5),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(20, 50, kernel_size=5),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(50, 250, kernel_size=4),
-            nn.LeakyReLU(),
+            nn.SELU(),
             Views((-1, 250)),
             nn.Linear(250, 30)
 
             # nn.Conv2d(1, 16, kernel_size=6, stride=2),
-            # nn.LeakyReLU(),
+            # nn.SELU(),
             # nn.Conv2d(16, 32, kernel_size=4, stride=2),
-            # nn.LeakyReLU(),
+            # nn.SELU(),
             # nn.Conv2d(32, 64, kernel_size=2, stride=2),
-            # nn.LeakyReLU(),
+            # nn.SELU(),
             # Views((-1, 256)),
             # nn.Linear(256, 30)
         )
@@ -118,11 +119,11 @@ class JVAE(nn.Module):
     def encoder_lin_block():
         return nn.Sequential(
             nn.Linear(784, 1000),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.Linear(1000, 500),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.Linear(500, 250),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.Linear(250, 30),
             nn.LeakyReLU()
         )
@@ -131,11 +132,11 @@ class JVAE(nn.Module):
     def decoder_lin_block():
         return nn.Sequential(
             nn.Linear(30, 250),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.Linear(250, 500),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.Linear(500, 1000),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.Linear(1000, 784),
             nn.Sigmoid()
         )
@@ -144,16 +145,16 @@ class JVAE(nn.Module):
     def decoder_conv_block():
         return nn.Sequential(
             nn.Linear(30, 64*2*2),
-            nn.LeakyReLU(),
+            nn.SELU(),
             Views((-1, 64, 2, 2)),
             nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2, padding=0),
-            nn.LeakyReLU(),
+            nn.SELU(),
             # nn.BatchNorm2d(32),
             nn.ConvTranspose2d(32, 16, kernel_size=4, stride=3, padding=1),
-            nn.LeakyReLU(),
+            nn.SELU(),
             # nn.BatchNorm2d(16),
             nn.ConvTranspose2d(16, 1, kernel_size=6, stride=3, padding=4),
-            nn.LeakyReLU(),
+            nn.SELU(),
             nn.Sigmoid()
         )
 
@@ -349,19 +350,26 @@ if __name__ == "__main__":
     for file in os.listdir(config['results_dir']):
         file_path = os.path.join(config['results_dir'], file)
         try:
-            if os.path.isfile(file_path):
+            if os.path.isfile(file_path) and file_path.endswith('.png'):
                 os.unlink(file_path)
         except Exception as e:
             print(e)
-    print('deleted contents of {}'.format(config['results_dir']))
+    print('deleted contents of {}'.format(
+        os.path.abspath(config['results_dir'])))
     for epoch in range(1, config['epochs'] + 1):
         train(epoch)
         test(epoch)
         with torch.no_grad():
             sample = torch.randn(128, 30).to(device)
-            sample = model.decoder_block1(sample).cpu()
+            sample = model.block1['linear_dec'](sample).cpu()
             save_image(sample.view(128, 1, 28, 28),
-                       'results/sample_' + str(epoch) + '.png')
+                       'results/sample_mnist' + str(epoch) + '.png')
+            sample = torch.randn(128, 30).to(device)
+            sample = model.block2['linear_dec'](sample).cpu()
+            save_image(sample.view(128, 1, 28, 28),
+                       'results/sample_notmnist_' + str(epoch) + '.png')
+
     torch.save(model.state_dict(),
-               config['results_dir'] + 'model_ep{}.pt'.format(config['epochs']))
+               os.path.join(config['results_dir'],
+                            'model_ep{}.pt'.format(config['epochs'])))
 writer.close()

@@ -130,5 +130,6 @@ dmypy.json
 # folders
 multitask/notMNIST_small/
 multitask/parallel_learn/results
+multitask/parallel_learn/runs
 
 *.zip

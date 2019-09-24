@@ -92,7 +92,8 @@ class JVAE(nn.Module):
         self.fc_mu2 = nn.Linear(250, 30)
         self.fc_logvar2 = nn.Linear(250, 30)
 
-    def encoder_conv_block(self):
+    @staticmethod
+    def encoder_conv_block():
         return nn.Sequential(
             nn.Conv2d(1, 20, kernel_size=5),
             nn.SELU(),
@@ -232,6 +233,10 @@ def train(epoch):
     model.train()
     train_loss1 = 0
     train_loss2 = 0
+    loss1_0 = 0.
+    loss2_0 = 0.
+    scaling_value = torch.as_tensor(
+        (0.4171190549233725 / epoch), dtype=torch.float32, device=device)
     for batch_idx, (data_mnist, data_notmnist) in enumerate(
             zip(train_loader_mnist, train_loader_notmnist)):
         labels_mnist = data_mnist[1].to(device)
@@ -249,20 +254,31 @@ def train(epoch):
         logvar2 = outs['logvar2']
         # calculate losses
         # first loss 1
-        loss1 = loss_function(recon_batch1, data_mnist, mu1, logvar1)
-        # loss1 = loss_function_classification(recon_batch1, data_mnist,
-        #                                      mu1, logvar1,
-        #                                      outs['classification1'],
-        #                                      labels_mnist)
+        # loss1 = loss_function(recon_batch1, data_mnist, mu1, logvar1)
+        loss1 = loss_function_classification(recon_batch1, data_mnist,
+                                             mu1, logvar1,
+                                             outs['classification1'],
+                                             labels_mnist)
+        # if epoch <= 2:
+        #     loss1 = scaling_value * loss1
+
         loss1.backward()
         train_loss1 += loss1.item()
         # now loss 2
-        loss2 = loss_function(recon_batch2, data_notmnist, mu2, logvar2)
-        # loss2 = loss_function_classification(recon_batch2, data_notmnist, mu2,
-        #                                      logvar2, outs['classification2'],
-        #                                      labels_notmnist)
+        # loss2 = loss_function(recon_batch2, data_notmnist, mu2, logvar2)
+        loss2 = loss_function_classification(recon_batch2, data_notmnist, mu2,
+                                             logvar2, outs['classification2'],
+                                             labels_notmnist)
+
+        if epoch <= 2:
+            loss2 = scaling_value * loss2
+
         loss2.backward()
         train_loss2 += loss2.item()
+
+        if loss1_0 + loss2_0 == 0.:
+            loss1_0 = loss1.item()
+            loss2_0 = loss2.item()
 
         optimizer.step()
         if batch_idx % config['log-interval'] == 0:
@@ -280,7 +296,10 @@ def train(epoch):
                 len(train_loader_notmnist.dataset),
                 100. * batch_idx / len(train_loader_notmnist),
                 loss2.item() / len(data_notmnist)))
-            print('Classification loss {}'.format(loss1.item()))
+            # print('Classification loss {}'.format(loss1.item()))
+            print('scaling loss: l1 {} l2 {} total {}'.format(
+                loss1.item() / loss1_0, loss2.item() / loss2_0,
+                (loss1.item() + loss2.item()) / (loss1_0 + loss2_0)))
             writer.add_scalar('Classification loss', loss1.item(), iteration)
             writer.add_scalar('train_loss 2', loss2.item(), iteration)
     print('====> Epoch: {} Average loss MNIST: {:.4f}'.format(
@@ -297,10 +316,14 @@ def test(epoch):
     model.eval()
     test_loss1 = 0
     test_loss2 = 0
+    correct1 = 0
+    correct2 = 0
     with torch.no_grad():
         for i, (data_mnist, data_notmnist) in enumerate(
                 zip(test_loader_mnist, test_loader_notmnist)):
+            labels_mnist = data_mnist[1].to(device)
             data_mnist = data_mnist[0].to(device)
+            labels_notmnist = data_notmnist[1].to(device)
             data_notmnist = data_notmnist[0].to(device)
             outs = model(data_mnist, data_notmnist)
 
@@ -312,10 +335,28 @@ def test(epoch):
             mu2 = outs['mu2']
             logvar2 = outs['logvar2']
 
-            test_loss1 += loss_function(recon_batch1,
-                                        data_mnist, mu1, logvar1).item()
-            test_loss2 += loss_function(recon_batch2, data_notmnist, mu2,
-                                        logvar2).item()
+            # test_loss1 += loss_function(recon_batch1,
+            #                             data_mnist, mu1, logvar1).item()
+            # test_loss2 += loss_function(recon_batch2, data_notmnist, mu2,
+            #                             logvar2).item()
+            test_loss1 += loss_function_classification(recon_batch1,
+                                                       data_mnist,
+                                                       mu1, logvar1,
+                                                       outs['classification1'],
+                                                       labels_mnist)
+            test_loss2 += loss_function_classification(recon_batch2,
+                                                       data_notmnist,
+                                                       mu2, logvar2,
+                                                       outs['classification2'],
+                                                       labels_notmnist)
+
+            # get the index of the max log-probability
+            pred = outs['classification1'].argmax(dim=1, keepdim=True)
+            correct1 += pred.eq(labels_mnist.view_as(pred)).sum().item()
+
+            pred = outs['classification2'].argmax(dim=1, keepdim=True)
+            correct2 += pred.eq(labels_notmnist.view_as(pred)).sum().item()
+
             if i == 0:
                 n = min(data_mnist.size(0), 8)
                 comparison1 = torch.cat([data_mnist[:n],
@@ -336,14 +377,25 @@ def test(epoch):
                            os.path.join(results_dir,
                                         'reconstruction_notmnist_' + str(
                                             epoch) + '.png'), nrow=n)
-
     test_loss1 /= len(test_loader_mnist.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss1))
-    writer.add_scalar('test loss 1', test_loss1, 1)
+    writer.add_scalar('test loss 1', test_loss1, epoch)
 
-    test_loss2 /= len(test_loader_mnist.dataset)
+    print('\nTest set MNIST: Average loss: {}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss1, correct1, len(test_loader_mnist.dataset),
+        100. * correct1 / len(test_loader_mnist.dataset)))
+    writer.add_scalar('Accuracy 1', 100. * correct1 /
+                      len(test_loader_mnist.dataset), epoch)
+
+    test_loss2 /= len(test_loader_notmnist.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss2))
     writer.add_scalar('test loss 2', test_loss2, 1)
+
+    print('\nTest set NotMNIST: Average loss: {}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss2, correct2, len(test_loader_notmnist.dataset),
+        100. * correct2 / len(test_loader_notmnist.dataset)))
+    writer.add_scalar('Accuracy 2', 100. * correct2 /
+                      len(test_loader_notmnist.dataset), epoch)
 
 
 if __name__ == "__main__":

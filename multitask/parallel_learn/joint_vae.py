@@ -8,9 +8,10 @@ from torch.nn import functional as F
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 from data_converter import NotMNISTLoader
+from enum import Enum
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-writer = SummaryWriter()
+writer = SummaryWriter(write_to_disk=False)
 
 with open('config.yaml', 'r') as stream:
     try:
@@ -74,6 +75,8 @@ class JVAE(nn.Module):
             'conv_dec': self.decoder_conv_block(),
             'linear_dec': self.decoder_lin_block()
         })
+
+        self.decision = self.binary_decision_block()
 
         # self.encoder_block1 = nn.Sequential(
         #     nn.Linear(784, 1000),
@@ -159,6 +162,17 @@ class JVAE(nn.Module):
             nn.Sigmoid()
         )
 
+    @staticmethod
+    def binary_decision_block():
+        return nn.Sequential(
+            nn.Linear(30, 250),
+            nn.SELU(),
+            nn.Linear(250, 100),
+            nn.SELU(),
+            nn.Linear(100, 2),
+            nn.Sigmoid(),
+        )
+
     # def encode(self, x):
     #     h = F.relu(self.fc1(x))
     #     return self.fc21(h), self.fc22(h)
@@ -194,6 +208,9 @@ class JVAE(nn.Module):
         mu2, logvar2 = self.fc_mu2(x2), self.fc_logvar2(x2)
         z2 = self.reparameterize(mu2, logvar2)
 
+        z_s = (z1.clone().detach().requires_grad_(True),
+               z2.clone().detach().requires_grad_(True))
+
         outs = {
             'decode1': self.block1['linear_dec'](z1),
             'mu1': mu1,
@@ -203,8 +220,22 @@ class JVAE(nn.Module):
             'logvar2': logvar2,
             'classification1': F.relu(self.classification_out1(z1)),
             'classification2': F.relu(self.classification_out2(z2)),
+            'binary_decision1': F.relu(self.decision(z_s[0])),
+            'binary_decision2': F.relu(self.decision(z_s[1]))
         }
         return outs
+
+
+class LossFunctions(Enum):
+    BCE = 'BCE'
+    CE = 'CE'
+    MAE = 'MAE'
+    MSE = 'MSE'
+    NORM = 'NORM'
+
+    @classmethod
+    def has_value(cls, value):
+        return value in cls._value2member_map_
 
 
 model = JVAE().to(device)
@@ -223,9 +254,41 @@ def loss_function(recon_x, x, mu, logvar):
     return BCE + KLD
 
 
+def loss_binary_decision(x, target, loss_name=LossFunctions.BCE):
+    if loss_name == LossFunctions.BCE:
+        if target == 0:
+            targets = _shape_targets(x, target)
+            loss = F.binary_cross_entropy(x, targets.to(torch.float),
+                                          reduction='sum')
+        else:
+            targets = _shape_targets(x, target)
+            loss = F.binary_cross_entropy(x, targets.to(torch.float),
+                                          reduction='sum')
+    elif loss_name == LossFunctions.MSE:
+        if target == 0:
+            loss = F.mse_loss(x, torch.zeros_like(x), reduction='sum')
+        else:
+            loss = F.mse_loss(x, torch.ones_like(x), reduction='sum')
+    else:
+        raise KeyError('Not known loss_name: {}'.format(loss_name))
+    return loss
+
+
+def _shape_targets(x, target):
+    targets = torch.empty_like(x)
+    if target == 0:
+        targets[:, 0] = torch.zeros_like(x[:, 0])
+        targets[:, 1] = torch.ones_like(x[:, 1])
+    elif target == 1:
+        targets[:, 0] = torch.ones_like(x[:, 0])
+        targets[:, 1] = torch.zeros_like(x[:, 1])
+    return targets
+
+
 def loss_function_classification(recon_x, x, mu, logvar, output, target):
     loss_r = loss_function(recon_x, x, mu, logvar)
     loss_c = F.cross_entropy(output, target, reduction='sum')
+    # loss_b = loss_binary_decision(decision, randint)
     return loss_c + loss_r
 
 
@@ -233,6 +296,8 @@ def train(epoch):
     model.train()
     train_loss1 = 0
     train_loss2 = 0
+    train_loss3 = 0.
+    train_loss4 = 0
     loss1_0 = 0.
     loss2_0 = 0.
     scaling_value = torch.as_tensor(
@@ -245,6 +310,7 @@ def train(epoch):
         data_notmnist = data_notmnist[0].to(device)
         optimizer.zero_grad()
 
+        # rand_i = torch.randint(0, 2, (1, ))
         outs = model(data_mnist, data_notmnist)
         recon_batch1 = outs['decode1']
         mu1 = outs['mu1']
@@ -252,6 +318,16 @@ def train(epoch):
         recon_batch2 = outs['decode2']
         mu2 = outs['mu2']
         logvar2 = outs['logvar2']
+        decision = outs['binary_decision1']
+        binary_loss1 = loss_binary_decision(decision, 0)
+        binary_loss1.backward()
+        train_loss3 += binary_loss1.item()
+
+        decision = outs['binary_decision2']
+        binary_loss2 = loss_binary_decision(decision, 1)
+        binary_loss2.backward()
+        train_loss4 += binary_loss2.item()
+
         # calculate losses
         # first loss 1
         # loss1 = loss_function(recon_batch1, data_mnist, mu1, logvar1)
@@ -281,6 +357,7 @@ def train(epoch):
             loss2_0 = loss2.item()
 
         optimizer.step()
+
         if batch_idx % config['log-interval'] == 0:
             print('Train Epoch MNIST: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx *
@@ -296,12 +373,17 @@ def train(epoch):
                 len(train_loader_notmnist.dataset),
                 100. * batch_idx / len(train_loader_notmnist),
                 loss2.item() / len(data_notmnist)))
+            print('Binary loss 1 {}, set {}'.format(binary_loss1.item(), 0))
+            print('Binary loss 2 {}, set {}'.format(binary_loss2.item(), 1))
+            writer.add_scalar('Binary loss 1', binary_loss1.item(), iteration)
+            writer.add_scalar('Binary loss 2', binary_loss2.item(), iteration)
             # print('Classification loss {}'.format(loss1.item()))
             print('scaling loss: l1 {} l2 {} total {}'.format(
                 loss1.item() / loss1_0, loss2.item() / loss2_0,
                 (loss1.item() + loss2.item()) / (loss1_0 + loss2_0)))
-            writer.add_scalar('Classification loss', loss1.item(), iteration)
-            writer.add_scalar('train_loss 2', loss2.item(), iteration)
+            writer.add_scalar('Classification loss 1', loss1.item(), iteration)
+            writer.add_scalar('Classification loss 2', loss2.item(), iteration)
+
     print('====> Epoch: {} Average loss MNIST: {:.4f}'.format(
           epoch, train_loss1 / len(train_loader_mnist.dataset)))
     writer.add_scalar('average loss 1',
@@ -310,14 +392,27 @@ def train(epoch):
           epoch, train_loss2 / len(train_loader_mnist.dataset)))
     writer.add_scalar('average loss 2',
                       train_loss2 / len(train_loader_mnist.dataset), epoch)
+    print(
+        'Average Binary loss {}'.format(train_loss3 / len(train_loader_mnist.dataset)))
+    print(
+        'Average Binary loss {}'.format(train_loss4 / len(train_loader_mnist.dataset)))
+    writer.add_scalar('Average binary loss 1',
+                      train_loss3 / len(train_loader_mnist.dataset), epoch)
+    writer.add_scalar('Average binary loss 2',
+                      train_loss4 / len(train_loader_notmnist.dataset), epoch)
 
 
 def test(epoch):
+    print('---- Test ----')
     model.eval()
     test_loss1 = 0
     test_loss2 = 0
+    test_loss3 = 0
+    test_loss4 = 0
     correct1 = 0
     correct2 = 0
+    correct3 = 0
+    correct4 = 0
     with torch.no_grad():
         for i, (data_mnist, data_notmnist) in enumerate(
                 zip(test_loader_mnist, test_loader_notmnist)):
@@ -350,6 +445,10 @@ def test(epoch):
                                                        outs['classification2'],
                                                        labels_notmnist)
 
+            test_loss3 += loss_binary_decision(outs['binary_decision1'], 0)
+
+            test_loss4 += loss_binary_decision(outs['binary_decision2'], 1)
+
             # get the index of the max log-probability
             pred = outs['classification1'].argmax(dim=1, keepdim=True)
             correct1 += pred.eq(labels_mnist.view_as(pred)).sum().item()
@@ -357,15 +456,25 @@ def test(epoch):
             pred = outs['classification2'].argmax(dim=1, keepdim=True)
             correct2 += pred.eq(labels_notmnist.view_as(pred)).sum().item()
 
+            pred = outs['binary_decision1']
+            # correct3 += pred.argmax(1).sum().item()
+            correct3 += (len(pred) - pred.argmin(dim=1).sum()).item()
+
+            pred = outs['binary_decision2']
+            # correct4 += pred.argmin(1).sum().item()
+            correct4 += (len(pred) - pred.argmax(dim=1).sum()).item()
+            print('Accuracy 2 {}/{}, {}'.format(
+                (len(pred) - pred.argmax(dim=1).sum()).item(),
+                pred.argmin(1).sum().item(), i))
+            print(correct4 / len(test_loader_mnist.dataset))
+
             if i == 0:
                 n = min(data_mnist.size(0), 8)
-                comparison1 = torch.cat([data_mnist[:n],
-                                         recon_batch1.view(config['batch_size'], 1, 28, 28)[:n]])
+                comparison1 = torch.cat([data_mnist[:n], recon_batch1.view(
+                    config['batch_size'], 1, 28, 28)[:n]])
                 n = min(data_notmnist.size(0), 8)
-                comparison2 = torch.cat([data_notmnist[:n],
-                                         recon_batch2.view(
-                    config['batch_size'], 1, 28, 28)[
-                    :n]])
+                comparison2 = torch.cat([data_notmnist[:n], recon_batch2.view(
+                    config['batch_size'], 1, 28, 28)[:n]])
                 results_dir = config['results_dir']
                 if not os.path.exists(results_dir):
                     os.mkdir(results_dir)
@@ -378,7 +487,7 @@ def test(epoch):
                                         'reconstruction_notmnist_' + str(
                                             epoch) + '.png'), nrow=n)
     test_loss1 /= len(test_loader_mnist.dataset)
-    print('====> Test set loss: {:.4f}'.format(test_loss1))
+    print('====> Test set loss 1: {:.4f}'.format(test_loss1))
     writer.add_scalar('test loss 1', test_loss1, epoch)
 
     print('\nTest set MNIST: Average loss: {}, Accuracy: {}/{} ({:.0f}%)\n'.format(
@@ -388,8 +497,8 @@ def test(epoch):
                       len(test_loader_mnist.dataset), epoch)
 
     test_loss2 /= len(test_loader_notmnist.dataset)
-    print('====> Test set loss: {:.4f}'.format(test_loss2))
-    writer.add_scalar('test loss 2', test_loss2, 1)
+    print('====> Test set loss 2: {:.4f}'.format(test_loss2))
+    writer.add_scalar('test loss 2', test_loss2, epoch)
 
     print('\nTest set NotMNIST: Average loss: {}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss2, correct2, len(test_loader_notmnist.dataset),
@@ -397,8 +506,27 @@ def test(epoch):
     writer.add_scalar('Accuracy 2', 100. * correct2 /
                       len(test_loader_notmnist.dataset), epoch)
 
+    test_loss3 /= len(test_loader_mnist.dataset)
+    print('====> Binary loss 1: {:.4f}'.format(test_loss3))
+    writer.add_scalar('test loss 3', test_loss3, epoch)
+
+    print('Test set average decision accuracy for set 0 {}'.format(
+        correct3 / len(test_loader_mnist.dataset)))
+    writer.add_scalar('Accuracy 3',
+                      100 * correct3 / len(test_loader_mnist.dataset), epoch)
+
+    test_loss4 /= len(test_loader_notmnist.dataset)
+    print('====> Binary loss 2: {:.4f}'.format(test_loss4))
+    writer.add_scalar('test loss 4', test_loss4, epoch)
+
+    print('Test set average decision accuracy for set 1 {}'.format(
+        100 * correct4 / len(test_loader_notmnist.dataset)))
+    writer.add_scalar('Accuracy 4',
+                      correct4 / len(test_loader_notmnist.dataset), epoch)
+
 
 if __name__ == "__main__":
+    print('first main')
     for file in os.listdir(config['results_dir']):
         file_path = os.path.join(config['results_dir'], file)
         try:
@@ -408,6 +536,11 @@ if __name__ == "__main__":
             print(e)
     print('deleted contents of {}'.format(
         os.path.abspath(config['results_dir'])))
+    # if model should be loaded
+    if config['load_model']:
+        path = os.path.join(config['results_dir'],
+                            'model_ep{}.pt'.format(config['epochs']))
+        model.load_state_dict(torch.load(path))
     for epoch in range(1, config['epochs'] + 1):
         train(epoch)
         test(epoch)
@@ -421,7 +554,7 @@ if __name__ == "__main__":
             save_image(sample.view(128, 1, 28, 28),
                        'results/sample_notmnist_' + str(epoch) + '.png')
 
-    torch.save(model.state_dict(),
-               os.path.join(config['results_dir'],
-                            'model_ep{}.pt'.format(config['epochs'])))
+        torch.save(model.state_dict(),
+                   os.path.join(config['results_dir'],
+                                'model_ep{}.pt'.format(config['epochs'])))
 writer.close()

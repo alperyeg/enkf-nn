@@ -1,0 +1,17 @@
+#############################
+### parameter config file ###
+#############################
+
+dataroot: '/home/yegenoglu/Documents/toolbox/L2L/l2l/optimizees/multitask' # to MNIST dataset
+folder_path: '../notMNIST_small' # to NotMNIST dataset if `create_dataloader` is True
+create_dataloader: False # if the notMNIST dataset should created new
+filename: '../dataloader_notmnist.npy' # filename for notMNIST dataloader, in combination with `create_dataloader`
+results_dir: 'results' # name of the directory to save the resulting images
+
+epochs: 2       # Number of epochs to train for
+load_model: False # if the model should be loaded from previous session
+batch_size: 128
+iters: 10000     # How many generator iterations to train for
+manualSeed: 123  # set graph-level seed
+ngpu: 1          # Number of GPUs to use
+log-interval: 10 # how many batches to wait before logging training status

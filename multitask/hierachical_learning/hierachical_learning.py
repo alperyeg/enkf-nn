@@ -189,7 +189,7 @@ def binary_test(epoch):
             data_notmnist = data_notmnist[0].to(device)
             x1, x2 = binary_model(data_mnist, data_notmnist)
             test_loss1 += loss_binary_decision(x1, 0)
-            test_loss2 += loss_binary_decision(x2, 0)
+            test_loss2 += loss_binary_decision(x2, 1)
             correct1 += x1.argmax(1).sum().item()
             correct2 += x2.argmin(1).sum().item()
     test_loss1 /= len(test_loader_mnist.dataset)
@@ -232,20 +232,20 @@ if __name__ == "__main__":
                             'binary_model_ep{}.pt'.format(config['epochs']))
         binary_model.load_state_dict(torch.load(path))
         # load classificator model 1 for mnist
-        # path = os.path.join(config['results_dir'],
-        #                     'cln_model_mnist_ep{}.pt'.format(config['epochs']))
-        # cln_model1.load_state_dict(torch.load(path))
-        # # load classificator model 2 for notmnist
-        # path = os.path.join(config['results_dir'],
-        #                     'cln_model_notmnist_ep{}.pt'.format(
-        #                         config['epochs']))
-        # cln_model2.load_state_dict(torch.load(path))
+        path = os.path.join(config['results_dir'],
+                            'cln_model_mnist_ep{}.pt'.format(config['epochs']))
+        cln_model1.load_state_dict(torch.load(path))
+        # load classificator model 2 for notmnist
+        path = os.path.join(config['results_dir'],
+                            'cln_model_notmnist_ep{}.pt'.format(
+                                config['epochs']))
+        cln_model2.load_state_dict(torch.load(path))
 
     for ep in range(1, config['epochs'] + 1):
         binary_train(ep)
         binary_test(ep)
-        classification_train(ep)
-        classification_test()
+        # classification_train(ep)
+        # classification_test()
         with torch.no_grad():
             torch.save(binary_model.state_dict(),
                        os.path.join(config['results_dir'],

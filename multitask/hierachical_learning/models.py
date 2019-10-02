@@ -17,14 +17,13 @@ class BinaryNet(nn.Module):
     def __init__(self):
         super(BinaryNet, self).__init__()
         self.fc_shared = nn.Linear(100, 2)
-        self.decision1 = self.decision_block()
-        self.decision2 = self.decision_block()
+        self.decision = self.decision_block()
 
     def forward(self, x1, x2):
         x1 = x1.view(-1, 784)
         x2 = x2.view(-1, 784)
-        x1 = self.decision1(x1)
-        x2 = self.decision2(x2)
+        x1 = self.decision(x1)
+        x2 = self.decision(x2)
         return x1, x2
 
     def decision_block(self):

@@ -463,10 +463,6 @@ def test(epoch):
             pred = outs['binary_decision2']
             # correct4 += pred.argmin(1).sum().item()
             correct4 += (len(pred) - pred.argmax(dim=1).sum()).item()
-            print('Accuracy 2 {}/{}, {}'.format(
-                (len(pred) - pred.argmax(dim=1).sum()).item(),
-                pred.argmin(1).sum().item(), i))
-            print(correct4 / len(test_loader_mnist.dataset))
 
             if i == 0:
                 n = min(data_mnist.size(0), 8)
@@ -526,7 +522,6 @@ def test(epoch):
 
 
 if __name__ == "__main__":
-    print('first main')
     for file in os.listdir(config['results_dir']):
         file_path = os.path.join(config['results_dir'], file)
         try:

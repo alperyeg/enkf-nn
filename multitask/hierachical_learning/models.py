@@ -19,12 +19,10 @@ class BinaryNet(nn.Module):
         self.fc_shared = nn.Linear(100, 2)
         self.decision = self.decision_block()
 
-    def forward(self, x1, x2):
+    def forward(self, x1):
         x1 = x1.view(-1, 784)
-        x2 = x2.view(-1, 784)
         x1 = self.decision(x1)
-        x2 = self.decision(x2)
-        return x1, x2
+        return x1
 
     def decision_block(self):
         return nn.Sequential(

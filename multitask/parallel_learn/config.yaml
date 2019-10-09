@@ -8,7 +8,7 @@ create_dataloader: False # if the notMNIST dataset should created new
 filename: '../dataloader_notmnist.npy' # filename for notMNIST dataloader, in combination with `create_dataloader`
 results_dir: 'results' # name of the directory to save the resulting images
 
-epochs: 50       # Number of epochs to train for
+epochs: 2       # Number of epochs to train for
 load_model: False # if the model should be loaded from previous session
 batch_size: 128
 iters: 10000     # How many generator iterations to train for

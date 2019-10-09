@@ -143,11 +143,15 @@ class EnsembleKalmanFilter(KalmanFilter):
         self.observations = _encode_targets(observations, self.gamma_s)
         self.data = data.clone()
         # convert to pytorch
-        self.ensemble = torch.as_tensor(self.ensemble, device=self.device, dtype=torch.float32)
-        self.observations = torch.as_tensor(self.observations, device=self.device, dtype=torch.float32)
+        self.ensemble = torch.as_tensor(
+            self.ensemble, device=self.device, dtype=torch.float32)
+        self.observations = torch.as_tensor(
+            self.observations, device=self.device, dtype=torch.float32)
         self.data = torch.as_tensor(self.data, device=self.device)
-        self.gamma = torch.as_tensor(self.gamma, device=self.device, dtype=torch.float32)
-        model_output = torch.as_tensor(model_output, device=self.device, dtype=torch.float32)
+        self.gamma = torch.as_tensor(
+            self.gamma, device=self.device, dtype=torch.float32)
+        model_output = torch.as_tensor(
+            model_output, device=self.device, dtype=torch.float32)
 
         for i in range(self.maxit):
             if (i % 100) == 0:
@@ -175,6 +179,15 @@ class EnsembleKalmanFilter(KalmanFilter):
                     self.ensemble = _update_step(self.ensemble,
                                                  self.observations[d],
                                                  g_tmp, self.gamma, Cpp, Cup)
+                # m = torch.distributions.Normal(self.ensemble.mean(),
+                #                                self.ensemble.std())
+                # m = torch.distributions.multivariate_normal.MultivariateNormal(
+                #     self.ensemble.mean(0), _cov_mat(self.ensemble, self.ensemble, ensemble_size))
+                cov = _cov_mat(self.ensemble, self.ensemble, ensemble_size)
+                mm = torch.mm(cov, torch.randn(size=(self.ensemble.shape[1],
+                                                     ensemble_size)))
+                self.ensemble += self.ensemble.mean(0) + mm.t()
+                # self.ensemble += m.sample(self.ensemble.shape)
         return self
 
 

@@ -154,7 +154,13 @@ class MnistFashionOptimizee(torch.nn.Module):
         self.output_activity_train = []
         self.output_activity_test = []
 
-        self.targets.append(self.labels)
+        self.targets.append(self.labels.cpu().numpy())
+
+        # Covariance noise matrix
+        self.cov = 0.0
+        self.length = 0
+        for key in self.conv_net.state_dict().keys():
+            self.length += self.conv_net.state_dict()[key].nelement()
 
     def create_individual(self):
         # get weights, biases from networks and flatten them
@@ -176,9 +182,9 @@ class MnistFashionOptimizee(torch.nn.Module):
             # fc1_weights, fc1_bias
             # params = np.hstack((conv1_weights, conv1_bias, conv2_weights,
             #                     conv2_bias, fc1_weights, fc1_bias))
-            length = 0
-            for key in self.conv_net.state_dict().keys():
-                length += self.conv_net.state_dict()[key].nelement()
+            # length = 0
+            # for key in self.conv_net.state_dict().keys():
+            #     length += self.conv_net.state_dict()[key].nelement()
 
             # conv_ensembles.append(params)
             # l = np.random.uniform(-.5, .5, size=length)
@@ -194,7 +200,7 @@ class MnistFashionOptimizee(torch.nn.Module):
                 #     tmp.append(jitter)
                 # conv_ensembles.append(tmp)
                 conv_ensembles.append(np.random.uniform(-1, 1,
-                                                        size=length))
+                                                        size=self.length))
             return dict(conv_params=torch.as_tensor(np.array(conv_ensembles),
                                                     device=device),
                         targets=self.labels,
@@ -376,12 +382,15 @@ def jitter_ensembles(ens, ens_size):
 
 if __name__ == '__main__':
     root = '~/Documents/toolbox/L2L/l2l/optimizees/multitask/'
-    n_ensembles = 5000
+    n_ensembles = 100
     conv_loss_mnist = []
     np.random.seed(0)
     batch_size = 64
     model = MnistFashionOptimizee(root=root, batch_size=batch_size, seed=0,
                                   n_ensembles=n_ensembles).to(device)
+    if model.cov == 0.0:
+        model.cov = np.random.normal(loc=0.1307, scale=0.3081,
+                                     size=(n_ensembles, model.length))
     conv_ens = None
     gamma = np.eye(10) * 0.01
     enkf = EnKF(tol=1e-5,
@@ -396,11 +405,15 @@ if __name__ == '__main__':
         if i == 0:
             try:
                 out = model.load_model()
+                # replace cov matrix with cov from weights (ensembles)
+                m = torch.distributions.Normal(out['conv_params'].mean(),
+                                               out['conv_params'].std())
+                model.cov = m.sample((n_ensembles, model.length))
             except FileNotFoundError as fe:
                 print(fe)
                 print('Model not found! Creating new individuals.')
                 out = model.create_individual()
-            conv_ens = out['conv_params']
+            conv_ens = out['conv_params'] + torch.as_tensor(model.cov)
             out = model.set_parameters(conv_ens)
             print('loss {} generation {}'.format(out['conv_loss'],
                                                  model.generation))
@@ -426,8 +439,8 @@ if __name__ == '__main__':
         'train_targets': model.targets,
         'train_act': model.output_activity_train,
         'test_act': model.output_activity_test,
-        'test_targets': model.test_label,
-        'ensemble': conv_ens,
+        'test_targets': model.test_label.cpu().numpy(),
+        'ensemble': conv_ens.cpu().numpy(),
     }
     np.save('conv_params.npy', param_dict)
     # d = {

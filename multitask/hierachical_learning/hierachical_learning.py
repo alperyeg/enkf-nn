@@ -66,7 +66,7 @@ def _print_outs_binary(epoch, num=0, batch_idx=0, len_data=0, binary_loss=0,
                 (epoch - 1) * len(train_loader_mnist.dataset))
         writer.add_scalar('binary_loss {}'.format(num),
                           binary_loss.item(), iteration)
-    elif print_type == 'epoch_train':
+    elif print_type == 'train_epoch':
         if num == 0:
             mnist = 'MNIST'
         else:
@@ -159,23 +159,20 @@ def binary_test(epoch):
                 correct1 += x1.argmin(1).sum().item()
                 correct2 += x2.argmax(1).sum().item()
     test_loss1 /= len(test_loader_mnist.dataset)
-    _print_outs_binary(num=randint, binary_loss=test_loss1, epoch=epoch, print_type='test')
+    _print_outs_binary(num=randint, binary_loss=test_loss1, epoch=epoch,
+                       print_type='test')
 
     _print_outs_binary(num=randint, correct=correct1, binary_loss=test_loss1,
                        epoch=epoch, print_type='test_epoch')
 
     # TODO finish the print outs
     test_loss2 /= len(test_loader_notmnist.dataset)
-    print('====> Test set loss {}: {:.4f}'.format(neg_randint, test_loss2))
-    writer.add_scalar('test loss {}'.format(neg_randint), test_loss2, epoch)
+    _print_outs_binary(num=neg_randint, binary_loss=test_loss2, epoch=epoch,
+                       print_type='test')
 
-    print(
-        '\nTest set {}: Average loss: {}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            neg_randint, test_loss2, correct2,
-            len(test_loader_notmnist.dataset),
-            100. * correct2 / len(test_loader_notmnist.dataset)))
-    writer.add_scalar('Accuracy 2', 100. * correct2 /
-                      len(test_loader_notmnist.dataset), epoch)
+    _print_outs_binary(num=neg_randint, correct=correct2,
+                       binary_loss=test_loss2, epoch=epoch,
+                       print_type='test_epoch')
 
 
 def classification_train(epoch):
@@ -208,7 +205,7 @@ def classification_train(epoch):
                 epoch, batch_idx * len(data_mnist), len(train_loader_mnist.dataset),
                 100. * batch_idx / len(train_loader_mnist), loss1.item()))
 
-            print('Train NotMNISTEpoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            print('Train NotMNIST Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data_notmnist), len(train_loader_notmnist.dataset),
                 100. * batch_idx / len(train_loader_notmnist), loss2.item()))
 

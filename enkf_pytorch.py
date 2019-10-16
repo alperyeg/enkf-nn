@@ -179,15 +179,14 @@ class EnsembleKalmanFilter(KalmanFilter):
                     self.ensemble = _update_step(self.ensemble,
                                                  self.observations[d],
                                                  g_tmp, self.gamma, Cpp, Cup)
-                # m = torch.distributions.Normal(self.ensemble.mean(),
-                #                                self.ensemble.std())
-                # m = torch.distributions.multivariate_normal.MultivariateNormal(
-                #     self.ensemble.mean(0), _cov_mat(self.ensemble, self.ensemble, ensemble_size))
-                cov = _cov_mat(self.ensemble, self.ensemble, ensemble_size)
-                mm = torch.mm(cov, torch.randn(size=(self.ensemble.shape[1],
-                                                     ensemble_size)))
-                self.ensemble += self.ensemble.mean(0) + mm.t()
-                # self.ensemble += m.sample(self.ensemble.shape)
+
+            # m = torch.distributions.Normal(self.ensemble.mean(),
+            #                                self.ensemble.std())
+            # self.ensemble += m.sample(self.ensemble.shape)
+            cov = 0.01 * _cov_mat(self.ensemble, self.ensemble, ensemble_size)
+            rnd = torch.randn(size=(self.ensemble.shape[1], ensemble_size), device=self.device)
+            mm = torch.mm(cov, rnd).to(self.device)
+            self.ensemble += torch.zeros(self.ensemble.shape[1]).to(self.device) + mm.t()
         return self
 
 
@@ -198,7 +197,7 @@ def _update_step(ensemble, observations, g, gamma, Cpp, Cup):
     Calculates the covariances and returns new ensembles
     """
     # return ensemble + (Cup @ np.linalg.lstsq(Cpp+gamma, (observations - g).T)[0]).T
-    return torch.mm(Cup, torch.gels((observations-g).t(), Cpp+gamma)[0]).t() + ensemble
+    return torch.mm(Cup, torch.lstsq((observations-g).t(), Cpp+gamma)[0]).t() + ensemble
 
 
 # @jit(parallel=True)

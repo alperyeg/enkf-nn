@@ -131,5 +131,6 @@ dmypy.json
 multitask/notMNIST_small/
 multitask/parallel_learn/results
 multitask/parallel_learn/runs
+multitask/hierachical_learning/results/
 
 *.zip

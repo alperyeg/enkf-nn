@@ -186,7 +186,7 @@ class EnsembleKalmanFilter(KalmanFilter):
             cov = 0.01 * _cov_mat(self.ensemble, self.ensemble, ensemble_size)
             rnd = torch.randn(size=(self.ensemble.shape[1], ensemble_size), device=self.device)
             mm = torch.mm(cov, rnd).to(self.device)
-            self.ensemble += torch.zeros(self.ensemble.shape[1]).to(self.device) + mm.t()
+            self.ensemble += self.ensemble.mean(0) + mm.t()
         return self
 
 

@@ -381,8 +381,8 @@ def jitter_ensembles(ens, ens_size):
 
 
 if __name__ == '__main__':
-    root = '~/Documents/toolbox/L2L/l2l/optimizees/multitask/'
-    n_ensembles = 100
+    root = '.'
+    n_ensembles = 1000
     conv_loss_mnist = []
     np.random.seed(0)
     batch_size = 64
@@ -429,6 +429,23 @@ if __name__ == '__main__':
         conv_ens = enkf.ensemble
         out = model.set_parameters(conv_ens)
         conv_loss_mnist.append(out['conv_loss'])
+        if i % 500 == 0:
+            print('Checkpointing at iteration {}'.format(i), flush=True)
+            param_dict = {
+                'train_pred': model.train_pred,
+                'test_pred':model.test_pred,
+                'train_acc':model.train_acc,
+                'test_acc': model.test_acc,
+                'train_cost': model.train_cost,
+                'test_cost': model.test_cost,
+                'train_targets': model.targets,
+                'train_act': model.output_activity_train,
+                'test_act': model.output_activity_test,
+                'test_targets': model.test_label,
+                'ensemble': conv_ens.cpu().numpy(),
+            }
+            np.save('conv_params_{}.npy'.format(i), param_dict)
+
     param_dict = {
         'train_pred': model.train_pred,
         'test_pred': model.test_pred,

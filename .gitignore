@@ -128,9 +128,12 @@ dmypy.json
 *.npy
 
 # folders
+MNIST/
+FashionMNIST/
 multitask/notMNIST_small/
 multitask/parallel_learn/results
 multitask/parallel_learn/runs
 multitask/hierachical_learning/results/
+cifar*
 
 *.zip

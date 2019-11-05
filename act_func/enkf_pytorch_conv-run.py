@@ -245,7 +245,7 @@ class MnistOptimizee(torch.nn.Module):
             self.output_activity_test.append(test_output)
             print('-----------------')
             conv_params = []
-            for c in ensembles:
+            for idx, c in enumerate(ensembles):
                 ds = self._shape_parameter_to_conv_net(c)
                 self.conv_net.set_parameter(ds)
                 conv_params.append(self.conv_net(inputs).t().cpu().numpy())
@@ -256,18 +256,6 @@ class MnistOptimizee(torch.nn.Module):
                 'input': self.inputs.squeeze(),
                 'targets': self.labels
             }
-            # if self.generation % generation_change == 0:
-            # min_ens = ensembles.min()
-            # max_ens = ensembles.max()
-            # len_ens = len(ensembles.mean(0))
-            # ens_mean = ensembles.mean(0)
-            # ens_std = ensembles.std(0)
-            # for _ in range(100):
-            #   conv_params.append(
-            # ensembles.mean(0) + np.random.uniform(min_ens, max_ens,
-            #                                       len_ens))
-            #     ens_mean + np.random.normal(ens_mean, ens_std,
-            #                               size=ensembles.shape))
         return outs
 
     def _shape_parameter_to_conv_net(self, params):
@@ -365,14 +353,14 @@ if __name__ == '__main__':
             try:
                 out = model.load_model()
                 # replace cov matrix with cov from weights (ensembles)
-                m = torch.distributions.Normal(out['conv_params'].mean(),
-                                               out['conv_params'].std())
-                model.cov = m.sample((n_ensembles, model.length))
+                # m = torch.distributions.Normal(out['conv_params'].mean(),
+                #                                out['conv_params'].std())
+                # model.cov = m.sample((n_ensembles, model.length))
             except FileNotFoundError as fe:
                 print(fe)
                 print('Model not found! Initalizaing new ensembles.')
                 out = model.create_individual()
-            conv_ens = out['conv_params'] + torch.as_tensor(model.cov)
+            conv_ens = out['conv_params']  # + torch.as_tensor(model.cov)
             out = model.set_parameters(conv_ens)
             print('loss {} generation {}'.format(out['conv_loss'],
                                                  model.generation))

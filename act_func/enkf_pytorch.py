@@ -10,7 +10,7 @@ class KalmanFilter(metaclass=ABCMeta):
 
     @abc.abstractmethod
     def fit(self, data, ensemble, ensemble_size, moments1,
-            observations, model_output, gamma, noise, p, u_exact):
+            observations, model_output, gamma, noise):
         pass
 
 
@@ -76,8 +76,8 @@ class EnsembleKalmanFilter(KalmanFilter):
         self.gamma_s = 0
         self.dims = 0
 
-    def fit(self, data, ensemble, ensemble_size, moments1,
-            observations, model_output, gamma, noise=0.):
+    def fit(self, data, ensemble, ensemble_size, moments1, observations,
+            model_output, gamma, noise=0.):
         """
         Prediction and update step of the EnKF
 
@@ -155,11 +155,11 @@ class EnsembleKalmanFilter(KalmanFilter):
             # m = torch.distributions.Normal(self.ensemble.mean(),
             #                                self.ensemble.std())
             # self.ensemble += m.sample(self.ensemble.shape)
-            cov =  _cov_mat(self.ensemble, self.ensemble, ensemble_size)
-            rnd = torch.randn(
-                size=(self.ensemble.shape[1], ensemble_size), device=self.device)
-            mm = torch.mm(cov, rnd).to(self.device)
-            self.ensemble += self.ensemble.mean(0) + mm.t()
+            # cov = _cov_mat(self.ensemble, self.ensemble, ensemble_size)
+            # rnd = torch.randn(
+            #     size=(self.ensemble.shape[1], ensemble_size), device=self.device)
+            # mm = torch.mm(cov, rnd).to(self.device)
+            # self.ensemble += mm.t()
         return self
 
 

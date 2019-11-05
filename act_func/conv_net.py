@@ -27,13 +27,16 @@ class Arcch(nn.Module):
 
     def __init__(self):
         super().__init__()
+        self.border_r = 2 * math.exp(1) / (math.exp(1) ** 2 - 1)
+        self.border_l = -1 * self.border_r
 
     def forward(self, x):
         a = x.clone()
-        a[a==0] = -1
-        arcch = torch.log(1/a + torch.sqrt(1/a**2 + 1))
-        arcch[arcch < -1] = -1
-        arcch[arcch > 1 ] = 1
+        arcch = torch.exp(1 / a + torch.sqrt(1 / a ** 2 + 1))
+        ind_r = torch.where((a <= self.border_r) & (a >= 0))[0]
+        ind_l = torch.where((a >= self.border_l) & (a <= 0))[0]
+        arcch[ind_r] = 1
+        arcch[ind_l] = -1
         return arcch
 
 
@@ -47,7 +50,7 @@ class Sinc(nn.Module):
             pi = torch.as_tensor(math.pi, device=device)
             return torch.sin(pi * x) / (pi * x)
         else:
-            return torch.sin(x)/x
+            return torch.sin(x) / x
 
 
 class ArSinh(nn.Module):
@@ -64,6 +67,18 @@ class Gauss(nn.Module):
 
     def forward(self, x):
         return torch.exp(-torch.pow(x, 2))
+
+
+class SQRBF(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, a):
+        x = a.clone()
+        x[x <= 1] = torch.pow(x[x <= 1], 2) / 2
+        x[(x >= 1) & (x < 2)] = (2 - x[(x >= 1) & (x < 2)]**2) / 2
+        x[x > 2] = 0
+        return x
 
 
 class ConvNet(nn.Module):
@@ -92,12 +107,6 @@ class ConvNet(nn.Module):
         # x = F.relu(self.fc2(x))
         # x = self.fc3(x)
         return F.softmax(x, dim=1)
-
-    def get_loss(self):
-        return self.loss
-
-    def set_loss(self, loss):
-        self.loss = loss
 
     def set_parameter(self, param_dict):
         st_dict = {}
@@ -163,8 +172,9 @@ def test(epoch, test_loader_mnist):
                 print('Test Loss {} in epoch {}, idx {}'.format(
                     loss.item(), epoch, idx))
 
-        print('Test accuracy: {} Average test loss: {} epoch:{}'.format(100 * test_accuracy / len(test_loader_mnist.dataset),
-                                                                        test_loss / len(test_loader_mnist.dataset), epoch))
+        print('Test accuracy: {} Average test loss: {} epoch:{}'.format(
+            100 * test_accuracy / len(test_loader_mnist.dataset),
+            test_loss / len(test_loader_mnist.dataset), epoch))
 
 
 if __name__ == '__main__':

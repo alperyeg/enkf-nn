@@ -95,7 +95,7 @@ class ConvNet(nn.Module):
         # self.fc2 = nn.Linear(120, 84)
         # self.fc3 = nn.Linear(84, 10)
 
-        self.act_func = Arcch()
+        self.act_func = nn.Sigmoid()
 
     def forward(self, x):
         x = self.pool(self.act_func(self.conv1(x)))
@@ -115,6 +115,17 @@ class ConvNet(nn.Module):
                 torch.Tensor(value.cpu().float()))
         self.load_state_dict(st_dict)
 
+
+def init_weights(m):
+    mean = 0.
+    std = 10.
+    if type(m) == nn.Linear:
+        m.weight.data.normal_(mean, std)
+        m.bias.data.fill_(1)
+    elif type(m) == nn.Conv2d:
+        m.weight.data.normal_(mean, std)
+        if m.bias is not None:
+            m.bias.data.fill_(1)
 
 def get_data(batch_size, device):
     kwargs = {'num_workers': 1, 'pin_memory': True} if device == 'cuda' else {}
@@ -179,6 +190,7 @@ def test(epoch, test_loader_mnist):
 
 if __name__ == '__main__':
     net = ConvNet()
+    net.apply(init_weights)
     # optimizer = optim.Adam(net.parameters(), lr=1e-3)
     optimizer = optim.SGD(net.parameters(), lr=0.1, momentum=0.9)
     # Cross entropy loss to calculate the loss

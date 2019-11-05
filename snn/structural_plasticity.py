@@ -326,7 +326,8 @@ class StructuralPlasticity:
         nest.Connect(self.pixel_rate_generators, self.nodes_in, "one_to_one",
                      syn_spec=syn_dict)
         # Input neurons to bulk
-        syn_dict = {"model": "random_synapse"}
+        syn_dict = {"model": "random_synapse", "weight": weights}
+        print(self.nodes_e[0:len(self.nodes_in)])
         nest.Connect(self.nodes_in, self.nodes_e[0:len(self.nodes_in)],
                      "one_to_one", syn_spec=syn_dict)
 
@@ -353,7 +354,6 @@ class StructuralPlasticity:
         nest.Connect(self.pixel_rate_generators, self.nodes_in, "one_to_one")
         weights = {'distribution': 'uniform',
                    'low': self.psc_i,  'high': self.psc_e,}
-                   # 'mu': 0., 'sigma': 100.}
         syn_dict = {"model": "random_synapse", "weight": weights}
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.05 * self.number_bulk_exc_neurons)}
@@ -424,33 +424,39 @@ class StructuralPlasticity:
 
     def connect_internal_bulk(self):
         # Connect bulk
+        weights = {'distribution': 'uniform',
+                   'low': 0.0,  'high': self.psc_e,}
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.09 * self.number_bulk_exc_neurons)}
-        syn_dict = {"model": "random_synapse"}
+        syn_dict = {"model": "random_synapse", "weight": weights}
         nest.Connect(self.nodes_e, self.nodes_e, conn_dict, syn_spec=syn_dict)
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.1 * self.number_bulk_inh_neurons)}
-        syn_dict = {"model": "random_synapse"}
+        syn_dict = {"model": "random_synapse", "weight": weights}
         nest.Connect(self.nodes_e, self.nodes_i, conn_dict, syn_spec=syn_dict)
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.12 * self.number_bulk_exc_neurons)}
-        syn_dict = {"model": "random_synapse"}
+        weights = {'distribution': 'uniform',
+                   'low': self.psc_i,  'high': 0.0,}
+        syn_dict = {"model": "random_synapse", "weight": weights}
         nest.Connect(self.nodes_i, self.nodes_e, conn_dict, syn_spec=syn_dict)
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.08 * self.number_bulk_inh_neurons)}
-        syn_dict = {"model": "random_synapse"}
+        syn_dict = {"model": "random_synapse", "weight": weights}
         nest.Connect(self.nodes_i, self.nodes_i, conn_dict, syn_spec=syn_dict)
 
     def connect_bulk_to_out(self):
         # Bulk to out
+        weights = {'distribution': 'uniform',
+                   'low': 0.0,  'high': self.psc_e,}
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.23 * self.number_output_clusters)}
-        syn_dict = {"model": "random_synapse"}
+        syn_dict = {"model": "random_synapse", "weight": weights}
         nest.Connect(self.nodes_e, self.nodes_out_e[0], conn_dict,
                      syn_spec=syn_dict)
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.39 * self.number_output_clusters)}
-        syn_dict = {"model": "random_synapse"}
+        syn_dict = {"model": "random_synapse", "weight": weights}
         nest.Connect(self.nodes_e, self.nodes_out_i[0], conn_dict,
                      syn_spec=syn_dict)
 

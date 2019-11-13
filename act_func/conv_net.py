@@ -174,8 +174,8 @@ def get_data(batch_size, device):
 def train(epoch, train_loader_mnist):
     net.train()
     train_loss = 0
-    act_func = {'act1': [], 'act2': [], 'act1_mean':[], 'act2_mean':[],
-                'act1_std':[], 'act2_std':[]}
+    act_func = {'act1': [], 'act2': [], 'act1_mean': [], 'act2_mean': [],
+                'act1_std': [], 'act2_std': []}
     act_mean_std = []
     for idx, (img, target) in enumerate(train_loader_mnist):
         optimizer.zero_grad()

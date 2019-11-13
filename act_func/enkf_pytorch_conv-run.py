@@ -112,6 +112,10 @@ class MnistOptimizee(torch.nn.Module):
         self.targets = []
         self.output_activity_train = []
         self.output_activity_test = []
+        self.act_func = {'act1': [], 'act2': [], 'act1_mean': [],
+                         'act2_mean': [], 'act1_std': [], 'act2_std': []}
+        self.test_act_func = {'act1': [], 'act2': [], 'act1_mean': [],
+                              'act2_mean': [], 'act1_std': [], 'act2_std': []}
 
         self.targets.append(self.labels.cpu().numpy())
 
@@ -217,7 +221,11 @@ class MnistOptimizee(torch.nn.Module):
                 # append the outputs
                 self.targets.append(self.labels.cpu().numpy())
 
-            outputs = self.conv_net(inputs)
+            outputs, act1, act2 = self.conv_net(inputs)
+            self.act_func['act1_mean'].append(act1.mean().item())
+            self.act_func['act2_mean'].append(act2.mean().item())
+            self.act_func['act1_std'].append(act1.std().item())
+            self.act_func['act2_std'].append(act2.std().item())
             self.output_activity_train.append(outputs.cpu().numpy())
             conv_loss = self.criterion(outputs, labels).item()
             train_cost = _calculate_cost(_encode_targets(labels, 10),
@@ -232,7 +240,11 @@ class MnistOptimizee(torch.nn.Module):
             self.train_pred.append(np.argmax(outputs.cpu().numpy(), 1))
 
             print('---- Test -----')
-            test_output = self.conv_net(self.test_input)
+            test_output, act1, act2 = self.conv_net(self.test_input)
+            self.test_act_func['act1_mean'].append(act1.mean().item())
+            self.test_act_func['act2_mean'].append(act2.mean().item())
+            self.test_act_func['act1_std'].append(act1.std().item())
+            self.test_act_func['act2_std'].append(act2.std().item())
             test_output = test_output.cpu().numpy()
             test_acc = score(self.test_label.cpu().numpy(),
                              np.argmax(test_output, 1))
@@ -248,7 +260,8 @@ class MnistOptimizee(torch.nn.Module):
             for idx, c in enumerate(ensembles):
                 ds = self._shape_parameter_to_conv_net(c)
                 self.conv_net.set_parameter(ds)
-                conv_params.append(self.conv_net(inputs).t().cpu().numpy())
+                params, _, _ = self.conv_net(inputs)
+                conv_params.append(params.t().cpu().numpy())
 
             outs = {
                 'conv_params': torch.tensor(conv_params).to(device),
@@ -391,6 +404,8 @@ if __name__ == '__main__':
                 'test_act': model.output_activity_test,
                 'test_targets': model.test_label,
                 'ensemble': conv_ens.cpu().numpy(),
+                'act_func': model.act_func,
+                'test_act_func': model.test_act_func,
             }
             np.save('conv_params_{}.npy'.format(i), param_dict)
 

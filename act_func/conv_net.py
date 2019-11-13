@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+import numpy as np
 from torchvision import datasets, transforms
 from torch import optim
 
@@ -76,9 +77,32 @@ class SQRBF(nn.Module):
     def forward(self, a):
         x = a.clone()
         x[x <= 1] = torch.pow(x[x <= 1], 2) / 2
-        x[(x >= 1) & (x < 2)] = (2 - x[(x >= 1) & (x < 2)]**2) / 2
+        x[(x >= 1) & (x < 2)] = (2 - x[(x >= 1) & (x < 2)] ** 2) / 2
         x[x > 2] = 0
         return x
+
+
+class HardShrinkMod(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, lam=0.5, alpha=1):
+        y = torch.zeros_like(x)
+        y[x > alpha] = alpha
+        ind = (lam < x) & (x < alpha)
+        y[ind] = x[ind]
+        ind = (-alpha < x) & (x < -lam)
+        y[ind] = x[ind]
+        y[x < -alpha] = -alpha
+        return y
+
+
+class SigmoidMod(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return 1 / (1 + torch.exp(-0.4 * x))
 
 
 class ConvNet(nn.Module):
@@ -98,15 +122,17 @@ class ConvNet(nn.Module):
         self.act_func = nn.Sigmoid()
 
     def forward(self, x):
-        x = self.pool(self.act_func(self.conv1(x)))
+        act_func1 = self.act_func(self.conv1(x))
+        x = self.pool(act_func1)
         x = self.act_func(self.conv2(x))
+        act_func2 = x.clone()
         # x = x.view(x.size(0), -1)
         x = x.view(-1, self.ndf)
-        x = self.act_func(self.fc1(x))
+        x = self.fc1(x)
         # x = F.relu(self.fc1(x))
         # x = F.relu(self.fc2(x))
         # x = self.fc3(x)
-        return F.softmax(x, dim=1)
+        return x, act_func1, act_func2
 
     def set_parameter(self, param_dict):
         st_dict = {}
@@ -118,14 +144,16 @@ class ConvNet(nn.Module):
 
 def init_weights(m):
     mean = 0.
-    std = 10.
+    std = 1.
     if type(m) == nn.Linear:
         m.weight.data.normal_(mean, std)
-        m.bias.data.fill_(1)
+        if m.bias is not None:
+            m.bias.data.fill_(1)
     elif type(m) == nn.Conv2d:
         m.weight.data.normal_(mean, std)
         if m.bias is not None:
             m.bias.data.fill_(1)
+
 
 def get_data(batch_size, device):
     kwargs = {'num_workers': 1, 'pin_memory': True} if device == 'cuda' else {}
@@ -146,10 +174,17 @@ def get_data(batch_size, device):
 def train(epoch, train_loader_mnist):
     net.train()
     train_loss = 0
+    act_func = {'act1': [], 'act2': [], 'act1_mean':[], 'act2_mean':[],
+                'act1_std':[], 'act2_std':[]}
+    act_mean_std = []
     for idx, (img, target) in enumerate(train_loader_mnist):
         optimizer.zero_grad()
         # network prediction for the image
-        output = net(img)
+        output, act1, act2 = net(img)
+        act_func['act1_mean'].append(act1.mean().item())
+        act_func['act2_mean'].append(act2.mean().item())
+        act_func['act1_std'].append(act1.std().item())
+        act_func['act2_std'].append(act2.std().item())
         # calculate the loss
         loss = criterion(output, target)
         # backprop
@@ -157,12 +192,16 @@ def train(epoch, train_loader_mnist):
         train_loss += loss.item()
         optimizer.step()
 
-        if idx % 10 == 0:
+        if idx % 200 == 0:
             print('Loss {} in epoch {}, idx {}'.format(
                 loss.item(), epoch, idx))
+            act_func['act1'].append(act1.detach().numpy())
+            act_func['act2'].append(act2.detach().numpy())
+            torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
 
     print('Average loss: {} epoch:{}'.format(
         train_loss / len(train_loader_mnist.dataset), epoch))
+    np.save('act_func.npy', act_func)
 
 
 def test(epoch, test_loader_mnist):
@@ -171,7 +210,7 @@ def test(epoch, test_loader_mnist):
     test_loss = 0
     with torch.no_grad():
         for idx, (img, target) in enumerate(test_loader_mnist):
-            output = net(img)
+            output, _, _ = net(img)
             loss = criterion(output, target)
             test_loss += loss.item()
             # network prediction

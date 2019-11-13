@@ -158,8 +158,8 @@ class MnistOptimizee(torch.nn.Module):
                 #     jitter = np.random.uniform(-0.1, 0.1) + j
                 #     tmp.append(jitter)
                 # conv_ensembles.append(tmp)
-                conv_ensembles.append(np.random.uniform(-1, 1,
-                                                        size=self.length))
+                conv_ensembles.append(np.random.normal(0, 0.1,
+                                                       size=self.length))
             return dict(conv_params=torch.as_tensor(np.array(conv_ensembles),
                                                     device=device),
                         targets=self.labels,
@@ -203,7 +203,7 @@ class MnistOptimizee(torch.nn.Module):
         self.conv_net.set_parameter(ds)
         print('---- Train -----')
         print('Generation ', self.generation)
-        generation_change = 10
+        generation_change = 8
         with torch.no_grad():
             inputs = self.inputs.to(device)
             labels = self.labels.to(device)
@@ -332,6 +332,7 @@ if __name__ == '__main__':
     n_ensembles = 1000
     conv_loss_mnist = []
     np.random.seed(0)
+    torch.manual_seed(0)
     batch_size = 64
     model = MnistOptimizee(root=root, batch_size=batch_size, seed=0,
                            n_ensembles=n_ensembles).to(device)
@@ -351,7 +352,7 @@ if __name__ == '__main__':
         model.generation = i + 1
         if i == 0:
             try:
-                out = model.load_model()
+                out = model.load_model('')
                 # replace cov matrix with cov from weights (ensembles)
                 # m = torch.distributions.Normal(out['conv_params'].mean(),
                 #                                out['conv_params'].std())

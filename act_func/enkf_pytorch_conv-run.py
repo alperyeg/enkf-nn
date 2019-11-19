@@ -1,6 +1,7 @@
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import torch.nn.functional as F
 import torch.nn as nn
 import time
 import matplotlib.pyplot as plt
@@ -109,6 +110,8 @@ class MnistOptimizee(torch.nn.Module):
         self.test_acc = []
         self.train_cost = []
         self.test_cost = []
+        self.train_loss = []
+        self.test_loss = [] 
         self.targets = []
         self.output_activity_train = []
         self.output_activity_test = []
@@ -226,21 +229,23 @@ class MnistOptimizee(torch.nn.Module):
             self.act_func['act2_mean'].append(act2.mean().item())
             self.act_func['act1_std'].append(act1.std().item())
             self.act_func['act2_std'].append(act2.std().item())
-            self.output_activity_train.append(outputs.cpu().numpy())
+            self.output_activity_train.append(F.softmax(outputs, dim=1).cpu().numpy())
             conv_loss = self.criterion(outputs, labels).item()
+            self.train_loss.append(conv_loss)
             train_cost = _calculate_cost(_encode_targets(labels, 10),
-                                         outputs.cpu().numpy(), 'MSE')
+                                         F.softmax(outputs, dim=1).cpu().numpy(), 'MSE')
             train_acc = score(labels.cpu().numpy(),
-                              np.argmax(outputs.cpu().numpy(), 1))
+                              np.argmax(F.softmax(outputs, dim=1).cpu().numpy(), 1))
             print('Cost: ', train_cost)
             print('Accuracy: ', train_acc)
             print('Loss:', conv_loss)
             self.train_cost.append(train_cost)
             self.train_acc.append(train_acc)
-            self.train_pred.append(np.argmax(outputs.cpu().numpy(), 1))
+            self.train_pred.append(np.argmax(F.softmax(outputs, dim=1).cpu().numpy(), 1))
 
             print('---- Test -----')
             test_output, act1, act2 = self.conv_net(self.test_input)
+            test_loss = self.criterion(test_output, self.test_label).item()
             self.test_act_func['act1_mean'].append(act1.mean().item())
             self.test_act_func['act2_mean'].append(act2.mean().item())
             self.test_act_func['act1_std'].append(act1.std().item())
@@ -251,10 +256,12 @@ class MnistOptimizee(torch.nn.Module):
             test_cost = _calculate_cost(_encode_targets(self.test_label.cpu().numpy(), 10),
                                         test_output, 'MSE')
             print('Test accuracy', test_acc)
+            print('Test loss: {}'.format(test_loss))
             self.test_acc.append(test_acc)
             self.test_pred.append(np.argmax(test_output, 1))
             self.test_cost.append(test_cost)
             self.output_activity_test.append(test_output)
+            self.test_loss.append(test_loss)
             print('-----------------')
             conv_params = []
             for idx, c in enumerate(ensembles):
@@ -342,7 +349,7 @@ def jitter_ensembles(ens, ens_size):
 
 if __name__ == '__main__':
     root = '../'
-    n_ensembles = 1000
+    n_ensembles = 5000
     conv_loss_mnist = []
     np.random.seed(0)
     torch.manual_seed(0)
@@ -361,7 +368,8 @@ if __name__ == '__main__':
                 shuffle=False,
                 n_batches=1,
                 converge=False)
-    for i in range(100):
+    rng = int(60000 / batch_size * 8)
+    for i in range(rng):
         model.generation = i + 1
         if i == 0:
             try:
@@ -406,9 +414,11 @@ if __name__ == '__main__':
                 'ensemble': conv_ens.cpu().numpy(),
                 'act_func': model.act_func,
                 'test_act_func': model.test_act_func,
+                'train_loss': model.train_loss,
+                'test_loss': model.test_loss,
             }
             np.save('conv_params_{}.npy'.format(i), param_dict)
-
+    
     param_dict = {
         'train_pred': model.train_pred,
         'test_pred': model.test_pred,
@@ -419,8 +429,12 @@ if __name__ == '__main__':
         'train_targets': model.targets,
         'train_act': model.output_activity_train,
         'test_act': model.output_activity_test,
-        'test_targets': model.test_label.cpu().numpy(),
+        'test_targets': model.test_label,
         'ensemble': conv_ens.cpu().numpy(),
+        'act_func': model.act_func,
+        'test_act_func': model.test_act_func,
+        'train_loss': model.train_loss,
+        'test_loss': model.test_loss,
     }
     np.save('conv_params.npy', param_dict)
     # d = {

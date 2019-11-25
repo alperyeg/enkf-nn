@@ -176,6 +176,9 @@ def train(epoch, train_loader_mnist):
     train_loss = 0
     act_func = {'act1': [], 'act2': [], 'act1_mean': [], 'act2_mean': [],
                 'act1_std': [], 'act2_std': []}
+    grads = {'conv1_grad': [], 'conv2_grad': [], 'fc1_grad': [],
+             'conv1_grad_mean': [], 'conv2_grad_mean': [], 'fc1_grad_mean': [],
+             'conv1_grad_std': [], 'conv2_grad_std': [], 'fc1_grad_std': []}
     act_mean_std = []
     for idx, (img, target) in enumerate(train_loader_mnist):
         optimizer.zero_grad()
@@ -189,19 +192,29 @@ def train(epoch, train_loader_mnist):
         loss = criterion(output, target)
         # backprop
         loss.backward()
+        grads['conv1_grad_mean'].append(net.conv1.weight.grad.mean().item())
+        grads['conv2_grad_mean'].append(net.conv2.weight.grad.mean().item())
+        grads['fc1_grad_mean'].append(net.fc1.weight.grad.mean().item())
+        grads['conv1_grad_std'].append(net.conv1.weight.grad.std().item())
+        grads['conv2_grad_std'].append(net.conv2.weight.grad.std().item())
+        grads['fc1_grad_std'].append(net.fc1.weight.grad.std().item())
+
         train_loss += loss.item()
         optimizer.step()
 
         if idx % 200 == 0:
             print('Loss {} in epoch {}, idx {}'.format(
                 loss.item(), epoch, idx))
+            grads['conv1_grad'].append(net.conv1.weight.grad.detach().numpy())
+            grads['conv2_grad'].append(net.conv2.weight.grad.detach().numpy())
+            grads['fc1_grad'].append(net.fc1.weight.grad.detach().numpy())
             act_func['act1'].append(act1.detach().numpy())
             act_func['act2'].append(act2.detach().numpy())
-            torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
+            # torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
 
     print('Average loss: {} epoch:{}'.format(
         train_loss / len(train_loader_mnist.dataset), epoch))
-    np.save('act_func.npy', act_func)
+    np.save('gradients.npy', grads)
 
 
 def test(epoch, test_loader_mnist):

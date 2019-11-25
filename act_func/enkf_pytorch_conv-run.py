@@ -116,9 +116,11 @@ class MnistOptimizee(torch.nn.Module):
         self.output_activity_train = []
         self.output_activity_test = []
         self.act_func = {'act1': [], 'act2': [], 'act1_mean': [],
-                         'act2_mean': [], 'act1_std': [], 'act2_std': []}
+                         'act2_mean': [], 'act1_std': [], 'act2_std': [], 
+                         'act3': [], 'act3_mean': [], 'act3_std': []}
         self.test_act_func = {'act1': [], 'act2': [], 'act1_mean': [],
-                              'act2_mean': [], 'act1_std': [], 'act2_std': []}
+                              'act2_mean': [], 'act1_std': [], 'act2_std': [], 
+                              'act3': [], 'act3_mean': [], 'act3_std': []}
 
         self.targets.append(self.labels.cpu().numpy())
 
@@ -225,10 +227,16 @@ class MnistOptimizee(torch.nn.Module):
                 self.targets.append(self.labels.cpu().numpy())
 
             outputs, act1, act2 = self.conv_net(inputs)
+            act3 = outputs
+            self.act_func['act1'].append(act1.cpu().numpy())
+            self.act_func['act2'].append(act2.cpu().numpy())
+            self.act_func['act3'].append(act3.cpu().numpy())
             self.act_func['act1_mean'].append(act1.mean().item())
             self.act_func['act2_mean'].append(act2.mean().item())
+            self.act_func['act3_mean'].append(act3.mean().item())
             self.act_func['act1_std'].append(act1.std().item())
             self.act_func['act2_std'].append(act2.std().item())
+            self.act_func['act3_std'].append(act3.std().item())
             self.output_activity_train.append(F.softmax(outputs, dim=1).cpu().numpy())
             conv_loss = self.criterion(outputs, labels).item()
             self.train_loss.append(conv_loss)
@@ -246,11 +254,16 @@ class MnistOptimizee(torch.nn.Module):
             print('---- Test -----')
             test_output, act1, act2 = self.conv_net(self.test_input)
             test_loss = self.criterion(test_output, self.test_label).item()
+            self.test_act_func['act1'].append(act1.cpu().numpy())
+            self.test_act_func['act2'].append(act3.cpu().numpy())
             self.test_act_func['act1_mean'].append(act1.mean().item())
             self.test_act_func['act2_mean'].append(act2.mean().item())
+            self.test_act_func['act3_mean'].append(test_output.mean().item())
             self.test_act_func['act1_std'].append(act1.std().item())
             self.test_act_func['act2_std'].append(act2.std().item())
+            self.test_act_func['act3_std'].append(test_output.std().item())
             test_output = test_output.cpu().numpy()
+            self.test_act_func['act3'].append(test_output)
             test_acc = score(self.test_label.cpu().numpy(),
                              np.argmax(test_output, 1))
             test_cost = _calculate_cost(_encode_targets(self.test_label.cpu().numpy(), 10),

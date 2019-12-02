@@ -113,11 +113,6 @@ class ConvNet(nn.Module):
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5, stride=1, bias=False)
         self.fc1 = nn.Linear(self.ndf, 10, bias=False)
-        # self.bn1 = nn.BatchNorm2d(10)
-        # self.bn2 = nn.BatchNorm2d(20)
-        # self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        # self.fc2 = nn.Linear(120, 84)
-        # self.fc3 = nn.Linear(84, 10)
 
         self.act_func = nn.Sigmoid()
 
@@ -129,9 +124,6 @@ class ConvNet(nn.Module):
         # x = x.view(x.size(0), -1)
         x = x.view(-1, self.ndf)
         x = self.fc1(x)
-        # x = F.relu(self.fc1(x))
-        # x = F.relu(self.fc2(x))
-        # x = self.fc3(x)
         return x, act_func1, act_func2
 
     def set_parameter(self, param_dict):
@@ -175,7 +167,8 @@ def train(epoch, train_loader_mnist):
     net.train()
     train_loss = 0
     act_func = {'act1': [], 'act2': [], 'act1_mean': [], 'act2_mean': [],
-                'act1_std': [], 'act2_std': []}
+                'act1_std': [], 'act2_std': [], 'act3': [], 'act3_mean': [],
+                'act3_std': []}
     grads = {'conv1_grad': [], 'conv2_grad': [], 'fc1_grad': [],
              'conv1_grad_mean': [], 'conv2_grad_mean': [], 'fc1_grad_mean': [],
              'conv1_grad_std': [], 'conv2_grad_std': [], 'fc1_grad_std': []}
@@ -184,10 +177,13 @@ def train(epoch, train_loader_mnist):
         optimizer.zero_grad()
         # network prediction for the image
         output, act1, act2 = net(img)
+        act3 = F.softmax(output, dim=1)
         act_func['act1_mean'].append(act1.mean().item())
         act_func['act2_mean'].append(act2.mean().item())
+        act_func['act3_mean'].append(act3.mean().item())
         act_func['act1_std'].append(act1.std().item())
         act_func['act2_std'].append(act2.std().item())
+        act_func['act3_std'].append(act3.std().item())
         # calculate the loss
         loss = criterion(output, target)
         # backprop
@@ -210,11 +206,13 @@ def train(epoch, train_loader_mnist):
             grads['fc1_grad'].append(net.fc1.weight.grad.detach().numpy())
             act_func['act1'].append(act1.detach().numpy())
             act_func['act2'].append(act2.detach().numpy())
-            # torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
+            act_func['act3'].append(act3.detach().numpy())
+            torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
 
     print('Average loss: {} epoch:{}'.format(
         train_loss / len(train_loader_mnist.dataset), epoch))
     np.save('gradients.npy', grads)
+    np.save('act_func.npy', act_func)
 
 
 def test(epoch, test_loader_mnist):
@@ -241,6 +239,7 @@ def test(epoch, test_loader_mnist):
 
 
 if __name__ == '__main__':
+    torch.manual_seed(0)
     net = ConvNet()
     net.apply(init_weights)
     # optimizer = optim.Adam(net.parameters(), lr=1e-3)

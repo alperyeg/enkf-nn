@@ -1,10 +1,11 @@
+import copy
 import torch
 import torchvision
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torch.nn as nn
 import time
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from numpy.linalg import norm
 import numpy as np
 from conv_net import ConvNet
@@ -47,7 +48,7 @@ class DataLoader:
     def load_data(root, batch_size):
         transform = transforms.Compose(
             [transforms.ToTensor(),
-             transforms.Normalize([0.1307], [0.3081])
+             transforms.Normalize([0.], [1.])
              ])
         # load now MNIST dataset
         trainset_mnist = torchvision.datasets.MNIST(root=root,
@@ -361,9 +362,10 @@ def jitter_ensembles(ens, ens_size):
 
 
 if __name__ == '__main__':
-    root = '../'
+    root = '../multitask'
     n_ensembles = 5000
     conv_loss_mnist = []
+    act_func = {}
     np.random.seed(0)
     torch.manual_seed(0)
     batch_size = 64
@@ -382,7 +384,7 @@ if __name__ == '__main__':
                 n_batches=1,
                 converge=False)
     rng = int(60000 / batch_size * 8)
-    for i in range(rng):
+    for i in range(2000):
         model.generation = i + 1
         if i == 0:
             try:
@@ -411,7 +413,7 @@ if __name__ == '__main__':
         conv_ens = enkf.ensemble
         out = model.set_parameters(conv_ens)
         conv_loss_mnist.append(out['conv_loss'])
-        if i % 500 == 0:
+        if i % 200 == 0:
             print('Checkpointing at iteration {}'.format(i), flush=True)
             param_dict = {
                 'train_pred': model.train_pred,
@@ -431,6 +433,9 @@ if __name__ == '__main__':
                 'test_loss': model.test_loss,
             }
             torch.save(param_dict, 'conv_params_{}.pt'.format(i))
+            act_func[str(i)] = {'train_act': model.act_func,
+                                'test_act':model.test_act_func}
+
     
     param_dict = {
         'train_pred': model.train_pred,
@@ -449,7 +454,10 @@ if __name__ == '__main__':
         'train_loss': model.train_loss,
         'test_loss': model.test_loss,
     }
-    torch.save(param_dict, 'conv_params.npy')
+    torch.save(param_dict, 'conv_params.pt')
+    act_func[str(i)] = {'train_act': copy.deepcopy(model.act_func),
+                        'test_act':copy.deepcopy(model.test_act_func)}
+    torch.save(act_func, 'act_func.pt')
     # d = {
     #     'total_cost': {'total_cost': conv_loss_mnist}
     # }

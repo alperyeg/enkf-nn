@@ -361,10 +361,39 @@ def jitter_ensembles(ens, ens_size):
     return np.array(res)
 
 
+def test(net, iteration, test_loader_mnist, criterion):
+    net.eval()
+    test_accuracy = 0
+    test_loss = 0
+    with torch.no_grad():
+        for idx, (img, target) in enumerate(test_loader_mnist):
+            img = img.to(device)
+            target = target.to(device)
+            output, _, _ = net(img)
+            loss = criterion(output, target)
+            test_loss += loss.item()
+            # network prediction
+            pred = output.argmax(1, keepdim=True)
+            # how many image are correct classified, compare with targets
+            test_accuracy += pred.eq(target.view_as(pred)).sum().item()
+
+            if idx % 10 == 0:
+                print('Test Loss {} in iteration {}, idx {}'.format(
+                    loss.item(), iteration, idx))
+        ta = 100 * test_accuracy / len(test_loader_mnist.dataset)
+        tl = test_loss / len(test_loader_mnist.dataset)
+        print('------ Evaluation -----')
+        print('Test accuracy: {} Average test loss: {}'.format(ta, tl))
+        print('-----------------------')
+    return ta, tl
+
+
 if __name__ == '__main__':
     root = '../multitask'
     n_ensembles = 5000
     conv_loss_mnist = []
+    # average test losses 
+    test_losses = []
     act_func = {}
     np.random.seed(0)
     torch.manual_seed(0)
@@ -384,7 +413,7 @@ if __name__ == '__main__':
                 n_batches=1,
                 converge=False)
     rng = int(60000 / batch_size * 8)
-    for i in range(2000):
+    for i in range(rng):
         model.generation = i + 1
         if i == 0:
             try:
@@ -413,7 +442,7 @@ if __name__ == '__main__':
         conv_ens = enkf.ensemble
         out = model.set_parameters(conv_ens)
         conv_loss_mnist.append(out['conv_loss'])
-        if i % 200 == 0:
+        if i % 500 == 0:
             print('Checkpointing at iteration {}'.format(i), flush=True)
             param_dict = {
                 'train_pred': model.train_pred,
@@ -435,6 +464,9 @@ if __name__ == '__main__':
             torch.save(param_dict, 'conv_params_{}.pt'.format(i))
             act_func[str(i)] = {'train_act': model.act_func,
                                 'test_act':model.test_act_func}
+            test_losses.append(test(model.conv_net, i, model.data_loader.test_mnist_loader,
+                                     nn.CrossEntropyLoss(reduction='sum')))
+            torch.save(test_losses, 'test_losses_{}.pt'.format(i))
 
     
     param_dict = {
@@ -455,12 +487,8 @@ if __name__ == '__main__':
         'test_loss': model.test_loss,
     }
     torch.save(param_dict, 'conv_params.pt')
-    act_func[str(i)] = {'train_act': copy.deepcopy(model.act_func),
-                        'test_act':copy.deepcopy(model.test_act_func)}
-    torch.save(act_func, 'act_func.pt')
-    # d = {
-    #     'total_cost': {'total_cost': conv_loss_mnist}
-    # }
-    # plotter = Plotter(d)
-    # plotter.plot()
-    # plotter.get_plots()
+    # act_func[str(i)] = {'train_act': copy.deepcopy(model.act_func),
+    #                     'test_act':copy.deepcopy(model.test_act_func)}
+    # torch.save(act_func, 'act_func.pt')
+    torch.save(test_losses, 'test_losses.pt')
+

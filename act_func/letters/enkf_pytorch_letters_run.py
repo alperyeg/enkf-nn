@@ -47,7 +47,7 @@ class DataLoader:
             dataloader = np.load(root).item()
         except FileNotFoundError:
             not_mnist = NotMNISTLoader(
-                folder_path='../../multitask/notMNIST_large/')
+                folder_path='../../multitask/notMNIST_small/')
             not_mnist.create_dataloader(batch_size=batch_size, save=True,
                                         standardize=False,
                                         train_size=60000, test_size=10000,
@@ -345,7 +345,7 @@ def test(net, iteration, test_loader_mnist, criterion):
 
 if __name__ == '__main__':
     root = './dataloader_notmnist.npy'
-    n_ensembles = 100
+    n_ensembles = 5000
     conv_loss_mnist = []
     # average test losses
     test_losses = []

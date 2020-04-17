@@ -1,0 +1,5 @@
+- 1 epoch 
+- activation function is sigmoid 
+- weights are normal distributed with mean=0 and std=1.0
+- ENKF
+- Cross entropy loss

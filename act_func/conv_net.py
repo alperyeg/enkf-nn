@@ -136,7 +136,6 @@ class ConvNet(nn.Module):
 
 def init_weights(m):
     mean = 0.
-    std = 1.
     if type(m) == nn.Linear:
         m.weight.data.normal_(mean, std)
         if m.bias is not None:
@@ -151,19 +150,23 @@ def get_data(batch_size, device):
     kwargs = {'num_workers': 1, 'pin_memory': True} if device == 'cuda' else {}
     # Load data and normalize images to mean 0 and std 1
     # training set
+    transform = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize([0], [1])
+         ])
     train_loader_mnist = torch.utils.data.DataLoader(
         datasets.MNIST(root='../', train=True, download=True,
-                       transform=transforms.ToTensor()),
+                       transform=transform),
         batch_size=batch_size, shuffle=True, **kwargs)
     # test set
     test_loader_mnist = torch.utils.data.DataLoader(
         datasets.MNIST(root='../', train=False,
-                       transform=transforms.ToTensor()),
+                       transform=transform),
         batch_size=batch_size, shuffle=True, **kwargs)
     return train_loader_mnist, test_loader_mnist
 
 
-def train(epoch, train_loader_mnist):
+def train(epoch, train_loader_mnist, optimizer):
     net.train()
     train_loss = 0
     act_func = {'act1': [], 'act2': [], 'act1_mean': [], 'act2_mean': [],
@@ -207,12 +210,12 @@ def train(epoch, train_loader_mnist):
             act_func['act1'].append(act1.detach().numpy())
             act_func['act2'].append(act2.detach().numpy())
             act_func['act3'].append(act3.detach().numpy())
-            torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
+            # torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
 
     print('Average loss: {} epoch:{}'.format(
         train_loss / len(train_loader_mnist.dataset), epoch))
-    np.save('gradients.npy', grads)
-    np.save('act_func.npy', act_func)
+    # np.save('gradients.npy', grads)
+    # np.save('act_func.npy', act_func)
 
 
 def test(epoch, test_loader_mnist):
@@ -241,15 +244,23 @@ def test(epoch, test_loader_mnist):
 if __name__ == '__main__':
     torch.manual_seed(0)
     net = ConvNet()
-    net.apply(init_weights)
-    # optimizer = optim.Adam(net.parameters(), lr=1e-3)
-    optimizer = optim.SGD(net.parameters(), lr=0.1, momentum=0.9)
     # Cross entropy loss to calculate the loss
     criterion = nn.CrossEntropyLoss()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     batch = 64
+    std = 0
     train_loader, test_loader = get_data(batch, device)
-    for ep in range(1, 2):
-        train(ep, train_loader)
-        print('training done')
-        test(ep, test_loader)
+    adam = optim.Adam(net.parameters(), lr=1e-3)
+    sgd = optim.SGD(net.parameters(), lr=0.1, momentum=0.9)
+    rmsprop = optim.RMSprop(net.parameters())
+    adagrad = optim.Adagrad(net.parameters())
+    optimizers = [sgd, adam, rmsprop, adagrad]
+    stds = [0.01, 0.1, 1, 5, 10]
+    for opt in optimizers:
+        for s in stds:
+            std = s
+            net.apply(init_weights)
+            for ep in range(1, 3):
+                train(ep, train_loader, opt)
+                print('training done')
+                test(ep, test_loader)

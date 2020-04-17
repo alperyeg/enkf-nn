@@ -7,10 +7,10 @@ import torch.nn.functional as F
 class ConvNet(nn.Module):
     def __init__(self):
         super(ConvNet, self).__init__()
-        self.ndf = 20 * 8 * 8
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5, stride=1, bias=False)
+        self.ndf = 20 * 8 * 8 # 980
+        self.conv1 = nn.Conv2d(1, 10, kernel_size=5, stride=1, bias=True)
         self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5, stride=1, bias=False)
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5, stride=1, bias=True)
         self.fc1 = nn.Linear(self.ndf, 10, bias=False)
         # self.bn1 = nn.BatchNorm2d(10)
         # self.bn2 = nn.BatchNorm2d(20)
@@ -28,7 +28,7 @@ class ConvNet(nn.Module):
         # x = F.relu(self.fc1(x))
         # x = F.relu(self.fc2(x))
         # x = self.fc3(x)
-        return F.softmax(x, dim=1)
+        return F.softmax(x)
 
     def get_loss(self):
         return self.loss

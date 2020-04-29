@@ -111,15 +111,15 @@ class MnistOptimizee(torch.nn.Module):
         self.train_cost = []
         self.test_cost = []
         self.train_loss = []
-        self.test_loss = [] 
+        self.test_loss = []
         self.targets = []
         self.output_activity_train = []
         self.output_activity_test = []
         self.act_func = {'act1': [], 'act2': [], 'act1_mean': [],
-                         'act2_mean': [], 'act1_std': [], 'act2_std': [], 
+                         'act2_mean': [], 'act1_std': [], 'act2_std': [],
                          'act3': [], 'act3_mean': [], 'act3_std': []}
         self.test_act_func = {'act1': [], 'act2': [], 'act1_mean': [],
-                              'act2_mean': [], 'act1_std': [], 'act2_std': [], 
+                              'act2_mean': [], 'act1_std': [], 'act2_std': [],
                               'act3': [], 'act3_mean': [], 'act3_std': []}
 
         self.targets.append(self.labels.cpu().numpy())
@@ -237,7 +237,8 @@ class MnistOptimizee(torch.nn.Module):
             self.act_func['act1_std'].append(act1.std().item())
             self.act_func['act2_std'].append(act2.std().item())
             self.act_func['act3_std'].append(act3.std().item())
-            self.output_activity_train.append(F.softmax(outputs, dim=1).cpu().numpy())
+            self.output_activity_train.append(
+                F.softmax(outputs, dim=1).cpu().numpy())
             conv_loss = self.criterion(outputs, labels).item()
             self.train_loss.append(conv_loss)
             train_cost = _calculate_cost(_encode_targets(labels, 10),
@@ -249,7 +250,8 @@ class MnistOptimizee(torch.nn.Module):
             print('Loss:', conv_loss)
             self.train_cost.append(train_cost)
             self.train_acc.append(train_acc)
-            self.train_pred.append(np.argmax(F.softmax(outputs, dim=1).cpu().numpy(), 1))
+            self.train_pred.append(
+                np.argmax(F.softmax(outputs, dim=1).cpu().numpy(), 1))
 
             print('---- Test -----')
             test_output, act1, act2 = self.conv_net(self.test_input)
@@ -433,9 +435,8 @@ if __name__ == '__main__':
             }
             torch.save(param_dict, 'conv_params_{}.pt'.format(i))
             act_func[str(i)] = {'train_act': model.act_func,
-                                'test_act':model.test_act_func}
+                                'test_act': model.test_act_func}
 
-    
     param_dict = {
         'train_pred': model.train_pred,
         'test_pred': model.test_pred,
@@ -455,7 +456,7 @@ if __name__ == '__main__':
     }
     torch.save(param_dict, 'conv_params.pt')
     act_func[str(i)] = {'train_act': model.act_func,
-                        'test_act':model.test_act_func}
+                        'test_act': model.test_act_func}
     torch.save(act_func, 'act_func.pt')
     # d = {
     #     'total_cost': {'total_cost': conv_loss_mnist}

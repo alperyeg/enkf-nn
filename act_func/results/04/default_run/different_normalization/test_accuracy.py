@@ -284,6 +284,64 @@ def _plot_std_zoomed_inset(ax, pl, mu, lower_bound, upper_bound):
     mark_inset(ax, axins, loc1=3, loc2=1, fc="none", ec="0.5")
 
 
+def adaptive_test_loss_splitted(normal_loss, dynamic_loss):
+    adaptive_ta = 100 - np.unique(dynamic_loss.get('test_loss'))
+    iterations = dynamic_loss.get('iteration')
+    iterations.insert(0, 0)
+    n_ens = dynamic_loss.get('n_ensembles')
+    n_ens.insert(0, 5000)
+    reps = dynamic_loss.get('model_reps')
+    reps.insert(0, 8)
+    normal_loss = 100 - np.array(normal_loss[0][:len(adaptive_ta)])
+    # prepare plots
+    fig, (ax1, ax2) = plt.subplots(
+        nrows=1, ncols=2, sharex=True, figsize=(8.5, 4))
+    ax3 = ax2.twinx()
+    # ax3.spines["right"].set_position(("axes", 1.2))
+    # plot 1
+    marker = 'o'
+    p11, = ax1.plot(adaptive_ta, marker=marker, label='fixed')
+    p12, = ax1.plot(normal_loss, marker=marker, label='adaptive')
+    ax1.set_xticks(range(len(iterations)))
+    ax1.set_xticklabels(iterations)
+    ax1.set_ylabel('Test Error  in %')
+    ax1.set_xlabel('Iterations')
+    tkl = ax1.xaxis.get_ticklabels()
+    # plot 2
+    marker = 's--'
+    markersize = 6
+    # plot for n_ens normal
+    p21, = ax2.plot(range(len(n_ens)), [5000] *
+                    len(n_ens), marker, markersize=markersize)
+    # plot for n_ens dynamic
+    p22, = ax2.plot(n_ens, marker, markersize=markersize)
+    # empty fake plot for the correct label color
+    ax2.plot([], marker, label='# ensembles', c='k')
+    ax2.set_ylabel('Number of ensembles')
+    # plot 3
+    marker = '*--'
+    markersize = 8
+    # plot for reps normal
+    p31, = ax3.plot(range(len(reps)), [8]*len(reps), marker,
+                    c=p21.get_color(), ms=markersize)
+    # plot for reps dynamic
+    p32, = ax3.plot(range(len(reps)), reps, marker,
+                    c=p22.get_color(), ms=markersize)
+    # empty fake plot for the correct label color
+    ax3.plot([], marker, label='repetitions', c='k', ms=markersize)
+    ax3.set_xticks(range(len(reps)))
+    # ax3.tick_params(axis='y')
+    ax3.set_ylabel('Number of repetitions')
+
+    fig.legend(prop={'size': 10}, loc='upper left',
+               bbox_to_anchor=(0.2, 0.5, 0.5, 0.5))
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.942, bottom=0.166, left=0.095, right=0.918,
+                        hspace=0.1, wspace=0.388)
+    fig.savefig('dynamic_changes_splitted.pdf', format='pdf',
+                bbox_inches='tight')
+
+
 def adaptive_test_loss(normal_loss, dynamic_loss):
     adaptive_ta = 100 - np.unique(dynamic_loss.get('test_loss'))
     iterations = dynamic_loss.get('iteration')
@@ -399,7 +457,7 @@ if __name__ == '__main__':
     # accuracies = ['Adam_test_accuracy_iteration1.pt',
     #               'SGD_test_accuracy_iteration1.pt', 'test_losses/acc_loss.pt']
     # plot_accuracy_all_iteration(accuracies, range(0, 8500, 500))
-    plot_accuracy_all_iteration_std(
-        ['SGD', 'acc'], path='test_losses/')
-    # adaptive_test_loss(torch.load('test_losses/acc_loss.pt'),
-    #                    torch.load('dyn_change.pt'))
+    # plot_accuracy_all_iteration_std(
+    #     ['SGD', 'acc'], path='test_losses/')
+    adaptive_test_loss_splitted(torch.load('test_losses/acc_loss.pt'),
+                                torch.load('dyn_change.pt'))

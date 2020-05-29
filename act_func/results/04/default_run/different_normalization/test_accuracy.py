@@ -316,7 +316,7 @@ def adaptive_test_loss_splitted(normal_loss, dynamic_loss):
     # plot for n_ens dynamic
     p22, = ax2.plot(n_ens, marker, markersize=markersize)
     # empty fake plot for the correct label color
-    ax2.plot([], marker, label='# ensembles', c='k')
+    ax2p = ax2.plot([], marker, label='# ensembles', c='k')
     ax2.set_ylabel('Number of ensembles')
     # plot 3
     marker = '*--'
@@ -328,13 +328,22 @@ def adaptive_test_loss_splitted(normal_loss, dynamic_loss):
     p32, = ax3.plot(range(len(reps)), reps, marker,
                     c=p22.get_color(), ms=markersize)
     # empty fake plot for the correct label color
-    ax3.plot([], marker, label='repetitions', c='k', ms=markersize)
+    ax3p = ax3.plot([], marker, label='repetitions', c='k', ms=markersize)
     ax3.set_xticks(range(len(reps)))
     # ax3.tick_params(axis='y')
     ax3.set_ylabel('Number of repetitions')
 
-    fig.legend(prop={'size': 10}, loc='upper left',
-               bbox_to_anchor=(0.2, 0.5, 0.5, 0.5))
+    # fig.legend(prop={'size': 10}, loc='upper left',
+    #            bbox_to_anchor=(0.2, 0.5, 0.5, 0.5))
+
+    # merge labels into one legend
+    lgd = ax2p + ax3p
+    labs = [l.get_label() for l in lgd]
+    ax1.legend(prop={'size': 10})
+    ax2.legend(lgd, labs, prop={'size': 10})
+    # remove ax ticks from second plot
+    ax2.tick_params(axis=u'both', which=u'both', length=0)
+    ax3.yaxis.set_tick_params(length=0)
     fig.tight_layout()
     fig.subplots_adjust(top=0.942, bottom=0.166, left=0.095, right=0.918,
                         hspace=0.1, wspace=0.388)
@@ -457,7 +466,7 @@ if __name__ == '__main__':
     # accuracies = ['Adam_test_accuracy_iteration1.pt',
     #               'SGD_test_accuracy_iteration1.pt', 'test_losses/acc_loss.pt']
     # plot_accuracy_all_iteration(accuracies, range(0, 8500, 500))
-    # plot_accuracy_all_iteration_std(
-    #     ['SGD', 'acc'], path='test_losses/')
+    plot_accuracy_all_iteration_std(
+        ['SGD', 'acc'], path='test_losses/')
     adaptive_test_loss_splitted(torch.load('test_losses/acc_loss.pt'),
                                 torch.load('dyn_change.pt'))

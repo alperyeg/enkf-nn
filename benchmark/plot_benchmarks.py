@@ -57,17 +57,20 @@ def to_dataframe(files):
     Cups = []
     updates = []
     fits = []
+    model_outs = []
     x_label = []
     for f in files:
         dat = torch.load(f)
         Cpps.append(sum(dat['1']['Cpp']))
         Cups.append(sum(dat['1']['Cup']))
         updates.append(sum(dat['1']['update']))
+        model_outs.append(sum(dat['1']['model_out']))
         fits.append(sum(dat['1']['fit']))
         s = int(f.split('_')[1].split('ens')[1])
         x_label.append(s)
     d = {'Cpp': np.unique(Cpps), 'Cup': np.unique(Cups),
-         'update': np.unique(updates), 'fit': fits, 'ensembles': x_label}
+         'update': np.unique(updates), 'indexing': model_outs, 'fit': fits, 
+         'ensembles': x_label}
     df = pd.DataFrame.from_dict(d)
     print(df)
     df = pd.melt(df, id_vars='ensembles',
@@ -82,4 +85,4 @@ data = to_dataframe(files)
 fig = sns.catplot(x='functions', y='time in [s]', hue='ensembles',
                   data=data, kind='bar', palette="deep")
 fig.fig.savefig('benchmarks.eps', bbox_inches='tight', pad_inches=0.1)
-plt.show()
+# plt.show()

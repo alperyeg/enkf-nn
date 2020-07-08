@@ -2,6 +2,9 @@ import numpy as np
 import abc
 import torch
 from abc import ABCMeta
+from torch.nn.functional import one_hot
+from torch.nn.functional import binary_cross_entropy_with_logits as bce
+
 
 # TODO: revise the documentation
 
@@ -178,7 +181,6 @@ def _cov_mat(x, y, ensemble_size):
     """
     # x_bar = _get_mean(x)
     # y_bar = _get_mean(y)
-
     # cov = 0.0
     return torch.tensordot((x - x.mean(0)), (y - y.mean(0)),
                            dims=([0], [0])) / ensemble_size
@@ -219,8 +221,10 @@ def _one_hot_vector(index, shape):
 
 
 def _encode_targets(targets, shape):
-    return np.array(
-        [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
+    #return np.array(
+    #    [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
+    return one_hot(targets, shape).float()
+
 
 
 def _shuffle(data, targets):

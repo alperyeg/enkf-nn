@@ -1,87 +1,40 @@
 import numpy as np
-import abc
-import time
 import torch
-from abc import ABCMeta
-from torch.nn.functional import one_hot
 
 
-class KalmanFilter(metaclass=ABCMeta):
-
-    @abc.abstractmethod
-    def fit(self, data, ensemble, ensemble_size, moments1,
-            observations, model_output, gamma, noise):
-        pass
-
-
-class EnsembleKalmanFilter(KalmanFilter):
-    def __init__(self, tol, maxit, stopping_crit, n_batches=32,
-                 shuffle=True, online=False, converge=False,
-                 loss_function='norm'):
+class EnsembleKalmanFilter:
+    def __init__(self, maxit=1, n_batches=1, online=False):
         """
         Ensemble Kalman Filter (EnKF)
 
-        EnKF following the formulation found in Iglesias et al. (2013), 
+        EnKF following the formulation found in Iglesias et al. (2013),
         The Ensemble Kalman Filter for Inverse Problems.
+        doi:10.1088/0266-5611/29/4/045001
 
-        :param tol: float, tolerance value for convergence
         :param maxit: int, maximum number of iterations
-        :param stopping_crit: str, stopping criterion,
-            `discrepancy`: checks if the actual misfit is smaller or equal
-            to the noise
-            `relative`: checks if the absolute value between actual and
-            previous misfit is smaller than given tolerance `tol`
-            otherwise calculates the loss between iteration `n` and `n-1` and
-            stops if the difference is `< tol`
-        :param shuffle: bool, True if the dataset should be shuffled,
-            Default is `True`.
         :param n_batches, int,  number of batches to used in mini-batch. If set
-            to `1` uses the whole given dataset. Default is `32`.
+            to `1` uses the whole given dataset. Default is `1`.
         :param online, bool, True if one random data point is requested,
-            between [0, dims], otherwise do mini-batch, Default is False
-        :param converge, bool, Checks and stops the iteration and updating step
-            if convergence is reached, Default is `False`.
-        :param loss_function, string, name of the loss function
-           `MAE` is the Mean Absolute Error or l1 - loss
-           `MSE` is the Mean Squared Error or l2 - loss
-           `CE` cross-entropy loss
-           `norm` norm-2 or Frobenius norm,
-           Default is `norm`
-
+            between [0, dims], otherwise do mini-batch. `dims` is the number of
+            observations. Default is False
         """
         self.device = torch.device("cuda" if torch.cuda.is_available()
                                    else "cpu")
         self.Cpp = None
         self.Cup = None
         self.ensemble = None
-        self.observations = None
-        self.data = None
-        self.e = None
-        self.r = None
-        self.misfit = None
-        self.u_exact = None
-        self.norm_uexact2 = None
-        self.norm_p2 = None
-        self.m1 = None
 
         self.maxit = maxit
-        self.shuffle = shuffle
-        self.stopping_crit = stopping_crit
-        self.tol = tol
-        self.converge = converge
         self.online = online
         self.n_batches = n_batches
-        self.loss_function = loss_function
         self.gamma = 0.
         self.gamma_s = 0
         self.dims = 0
-        self.times = {}
 
-    def fit(self, data, ensemble, ensemble_size, moments1, observations,
+    def fit(self, data, ensemble, ensemble_size, observations,
             model_output, gamma, noise=0.):
         """
         Prediction and update step of the EnKF
-
         Calculates new ensembles.
 
         :param ensemble: nd numpy array, contains ensembles `u`
@@ -90,16 +43,17 @@ class EnsembleKalmanFilter(KalmanFilter):
         :param model_output: nd numpy array, output of the model
             In terms of the Kalman Filter the model maps the ensembles (dim n)
             into the observed data `y` (dim k). E.g. network output activity
-        :param noise: nd numpy array, Noise can be added to the model (for `gamma`) 
+        :param noise: nd numpy array, Noise can be added to the model (for `gamma`)
             and is used in the misfit calculation for convergence.
             E.g. multivariate normal distribution. Default is `0.0`
         :param  gamma: nd numpy array, Normalizes the model-data distance in the
             update step, :`noise * I` (I is identity matrix) or
             :math:`\\gamma=I` if `noise` is zero
-        :return self, Possible outputs are, if calculated:
+        :return self, Possible outputs are:
             ensembles: nd numpy array, optimized `ensembles`
             Cpp: nd numpy array, covariance matrix of the model output
-            Cup: nd numpy array, covariance matrix of the model output and the ensembles 
+            Cup: nd numpy array, covariance matrix of the model output and the
+                ensembles
         """
         # get shapes
         self.gamma_s, self.dims = _get_shapes(observations, model_output)
@@ -109,8 +63,6 @@ class EnsembleKalmanFilter(KalmanFilter):
                 self.gamma = np.eye(self.gamma_s)
         else:
             self.gamma = gamma
-
-        self.times = {'Cpp':[], 'Cup':[], 'update':[], 'lstsq': [], 'mm': []} 
 
         # copy the data so we do not overwrite the original arguments
         self.ensemble = ensemble.clone()
@@ -129,11 +81,6 @@ class EnsembleKalmanFilter(KalmanFilter):
             model_output, device=self.device, dtype=torch.float32)
 
         for i in range(self.maxit):
-            if (i % 100) == 0:
-                print('Iteration {}/{}'.format(i, self.maxit))
-            if self.shuffle:
-                data, observations = _shuffle(self.data, self.observations)
-
             # now get mini_batches
             if self.n_batches > self.dims:
                 num_batches = 1
@@ -149,71 +96,29 @@ class EnsembleKalmanFilter(KalmanFilter):
                     # now get only the individuals output according to idx
                     g_tmp = model_output[:, :, d]
                     # Calculate the covariances
-                    torch.cuda.synchronize(self.device)
-                    t = time.time()
                     Cpp = _cov_mat(g_tmp, g_tmp, ensemble_size)
-                    self.times['Cpp'].append(time.time()-t)
-                    t = time.time()
                     Cup = _cov_mat(self.ensemble, g_tmp, ensemble_size)
-                    self.times['Cup'].append(time.time()-t)
-                    t = time.time()
                     self.ensemble = _update_step(self.ensemble,
                                                  self.observations[d],
-                                                 g_tmp, self.gamma, Cpp, Cup, self.times,
-                                                 self.device)
-                    self.times['update'].append(time.time()-t)
-
-            # m = torch.distributions.Normal(self.ensemble.mean(),
-            #                                self.ensemble.std())
-            # self.ensemble += m.sample(self.ensemble.shape)
-            # cov = 0.01 * _cov_mat(self.ensemble, self.ensemble, ensemble_size)
-            # rnd = torch.randn(
-            #     size=(self.ensemble.shape[1], ensemble_size), device=self.device)
-            # mm = torch.mm(cov, rnd).to(self.device)
-            # self.ensemble += mm.t()
-        print('Cpp', Cpp)
+                                                 g_tmp, self.gamma, Cpp, Cup)
         return self
 
 
-def _update_step(ensemble, observations, g, gamma, Cpp, Cup, times, device):
+def _update_step(ensemble, observations, g, gamma, Cpp, Cup):
     """
     Update step of the kalman filter
     Calculates the covariances and returns new ensembles
     """
     # return ensemble + (Cup @ np.linalg.lstsq(Cpp+gamma, (observations - g).T)[0]).T
     return torch.mm(Cup, torch.lstsq((observations-g).t(), Cpp+gamma)[0]).t() + ensemble
-    # c = Cpp + gamma
-    # o = observations-g
-    # o = o.t()
-    # t = time.time()
-    # lstsq = torch.lstsq(o, c)[0]
-    # times['lstsq'].append(time.time() - t)
-    # t = time.time()
-    # r = torch.mm(Cup, lstsq)
-    # r = r.t()
-    # times['mm'].append(time.time() - t)
-    # return r + ensemble
 
 
 def _cov_mat(x, y, ensemble_size):
     """
     Covariance matrix
     """
-    # x_bar = _get_mean(x)
-    # y_bar = _get_mean(y)
-
-    # cov = 0.0
     return torch.tensordot((x - x.mean(0)), (y - y.mean(0)),
                            dims=([0], [0])) / ensemble_size
-
-
-def _get_mean(x):
-    """
-    Depending on the shape returns the correct mean
-    """
-    if x.shape[1] == 1:
-        return np.mean(x)
-    return np.mean(x, axis=0)
 
 
 def _get_shapes(observations, model_output):
@@ -242,10 +147,8 @@ def _one_hot_vector(index, shape):
 
 
 def _encode_targets(targets, shape):
-    #return np.array(
-    #    [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
-    return one_hot(targets, shape).float()
-    
+    return np.array(
+        [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
 
 
 def _shuffle(data, targets):

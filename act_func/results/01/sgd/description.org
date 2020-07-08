@@ -1,3 +1,11 @@
+* conv net run
+- 1 epoch 
+- activation function is sigmoid 
+- weights are normal distributed with mean=0 and std=1.0
+- SGD
+- Cross entropy loss
+** Code
+#+BEGIN_SRC python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -113,6 +121,11 @@ class ConvNet(nn.Module):
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5, stride=1, bias=False)
         self.fc1 = nn.Linear(self.ndf, 10, bias=False)
+        # self.bn1 = nn.BatchNorm2d(10)
+        # self.bn2 = nn.BatchNorm2d(20)
+        # self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        # self.fc2 = nn.Linear(120, 84)
+        # self.fc3 = nn.Linear(84, 10)
 
         self.act_func = nn.Sigmoid()
 
@@ -124,6 +137,9 @@ class ConvNet(nn.Module):
         # x = x.view(x.size(0), -1)
         x = x.view(-1, self.ndf)
         x = self.fc1(x)
+        # x = F.relu(self.fc1(x))
+        # x = F.relu(self.fc2(x))
+        # x = self.fc3(x)
         return x, act_func1, act_func2
 
     def set_parameter(self, param_dict):
@@ -136,7 +152,7 @@ class ConvNet(nn.Module):
 
 def init_weights(m):
     mean = 0.
-    # std = 5.
+    std = 1.
     if type(m) == nn.Linear:
         m.weight.data.normal_(mean, std)
         if m.bias is not None:
@@ -151,26 +167,23 @@ def get_data(batch_size, device):
     kwargs = {'num_workers': 1, 'pin_memory': True} if device == 'cuda' else {}
     # Load data and normalize images to mean 0 and std 1
     # training set
-    transform = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize([0.], [1.])])
     train_loader_mnist = torch.utils.data.DataLoader(
         datasets.MNIST(root='../', train=True, download=True,
-                       transform=transform),
+                       transform=transforms.ToTensor()),
         batch_size=batch_size, shuffle=True, **kwargs)
     # test set
     test_loader_mnist = torch.utils.data.DataLoader(
         datasets.MNIST(root='../', train=False,
-                       transform=transform),
+                       transform=transforms.ToTensor()),
         batch_size=batch_size, shuffle=True, **kwargs)
     return train_loader_mnist, test_loader_mnist
 
 
-def train(epoch, train_loader_mnist, optimizer):
+def train(epoch, train_loader_mnist):
     net.train()
     train_loss = 0
     act_func = {'act1': [], 'act2': [], 'act1_mean': [], 'act2_mean': [],
-                'act1_std': [], 'act2_std': [], 'act3': [], 'act3_mean': [],
+                'act1_std': [], 'act2_std': [], 'act3': [], 'act3_mean': [], 
                 'act3_std': []}
     grads = {'conv1_grad': [], 'conv2_grad': [], 'fc1_grad': [],
              'conv1_grad_mean': [], 'conv2_grad_mean': [], 'fc1_grad_mean': [],
@@ -180,13 +193,12 @@ def train(epoch, train_loader_mnist, optimizer):
         optimizer.zero_grad()
         # network prediction for the image
         output, act1, act2 = net(img)
-        act3 = F.softmax(output, dim=1)
         act_func['act1_mean'].append(act1.mean().item())
         act_func['act2_mean'].append(act2.mean().item())
-        act_func['act3_mean'].append(act3.mean().item())
+        act_func['act3_mean'].append(act2.mean().item())
         act_func['act1_std'].append(act1.std().item())
         act_func['act2_std'].append(act2.std().item())
-        act_func['act3_std'].append(act3.std().item())
+        act_func['act3_std'].append(act2.std().item())
         # calculate the loss
         loss = criterion(output, target)
         # backprop
@@ -201,7 +213,7 @@ def train(epoch, train_loader_mnist, optimizer):
         train_loss += loss.item()
         optimizer.step()
 
-        if idx % 8 == 0:
+        if idx % 200 == 0:
             print('Loss {} in epoch {}, idx {}'.format(
                 loss.item(), epoch, idx))
             grads['conv1_grad'].append(net.conv1.weight.grad.detach().numpy())
@@ -209,96 +221,49 @@ def train(epoch, train_loader_mnist, optimizer):
             grads['fc1_grad'].append(net.fc1.weight.grad.detach().numpy())
             act_func['act1'].append(act1.detach().numpy())
             act_func['act2'].append(act2.detach().numpy())
-            act_func['act3'].append(act3.detach().numpy())
-            # torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
+            act_func['act3'].append(act2.detach().numpy())
+            torch.save(net.state_dict(), 'results/model_it{}.pt'.format(idx))
 
     print('Average loss: {} epoch:{}'.format(
         train_loss / len(train_loader_mnist.dataset), epoch))
-    if epoch % 1 == 0:
-        # np.save('{}_gradients_ep{}.npy'.format(optimizer.__class__.__name__, epoch), grads)
-        # np.save('{}_act_func_ep{}.npy'.format(optimizer.__class__.__name__, epoch), act_func)
-        pass
+    np.save('gradients.npy', grads)
 
 
-def test(epoch, test_loader_mnist, optimizer):
+def test(epoch, test_loader_mnist):
     net.eval()
     test_accuracy = 0
     test_loss = 0
-    ta = []
     with torch.no_grad():
         for idx, (img, target) in enumerate(test_loader_mnist):
             output, _, _ = net(img)
-            loss = F.cross_entropy(output, target)
+            loss = criterion(output, target)
             test_loss += loss.item()
             # network prediction
             pred = output.argmax(1, keepdim=True)
             # how many image are correct classified, compare with targets
             test_accuracy += pred.eq(target.view_as(pred)).sum().item()
 
-            if idx % 8 == 0:
-                tmp_acc = pred.eq(target.view_as(pred)).sum().item() * 100 / len(target)
-                ta.append(tmp_acc)
+            if idx % 10 == 0:
                 print('Test Loss {} in epoch {}, idx {}'.format(
                     loss.item(), epoch, idx))
-                print('Test accuracy {} in epoch {}, idx {}'.format(tmp_acc, epoch, idx))
 
-    print('Test accuracy: {} Average test loss: {} epoch:{}'.format(
-        100 * test_accuracy / len(test_loader_mnist.dataset),
-        test_loss / len(test_loader_mnist.dataset), epoch))
-    # if 100 * test_accuracy / len(test_loader_mnist.dataset) >= 80:
-    #     with open('std_optim_out.txt', 'a') as f:
-    #         opt_name = optimizer.__class__.__name__
-    #         ta = 100 * test_accuracy / len(test_loader_mnist.dataset)
-    #         print(std, opt_name, ta, epoch, file=f)
-    #         return True
-    # else:
-    #     return False
-    torch.save(ta, '{}_test_accuracy_iteration{}'.format(optimizer.__class__.__name__, 
-                                                         epoch))
-    return 100 * test_accuracy / len(test_loader_mnist.dataset)
+        print('Test accuracy: {} Average test loss: {} epoch:{}'.format(
+            100 * test_accuracy / len(test_loader_mnist.dataset),
+            test_loss / len(test_loader_mnist.dataset), epoch))
 
 
 if __name__ == '__main__':
-    torch.manual_seed(0)
-    np.random.seed(0)
     net = ConvNet()
-    # net.apply(init_weights)
+    net.apply(init_weights)
     # optimizer = optim.Adam(net.parameters(), lr=1e-3)
-    # optimizer = optim.RMSprop(net.parameters())
-    # optimizer = optim.Adagrad(net.parameters())
-    # optimizer = optim.SGD(net.parameters(), lr=0.9)
+    optimizer = optim.SGD(net.parameters(), lr=0.1, momentum=0.9)
     # Cross entropy loss to calculate the loss
     criterion = nn.CrossEntropyLoss()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print('Runs on {}'.format(device))
     batch = 64
     train_loader, test_loader = get_data(batch, device)
-    # for ep in range(0, 50):
-    #     train(ep, train_loader)
-    #     print('training done')
-    #     test(ep, test_loader)
-    adam = optim.Adam(net.parameters(), lr=1e-3)
-    sgd = optim.SGD(net.parameters(), lr=0.1, momentum=0.9)
-    rmsprop = optim.RMSprop(net.parameters())
-    adagrad = optim.Adagrad(net.parameters())
-    # optimizers = [sgd, adam, rmsprop, adagrad]
-    optimizers = [adam, sgd]
-    # stds = [0.01, 0.1, 1, 3, 5, 10]
-    stds = [1]
-    accs = []
-    # with open('std_optim_out.txt', 'w') as f:
-    #    print('std, optimizer, test_accuracy, epoch', file=f)
-    for opt in optimizers:
-        for s in stds:
-            std = s
-            net.apply(init_weights)
-            acc_reached = False
-            for ep in range(1, 11):
-                train(ep, train_loader, opt)
-                print('training done')
-                acc_reached = test(ep, test_loader, opt)
-                accs.append((s, acc_reached, opt.__class__.__name__))
-                # if acc_reached:
-                #     break
-    # torch.save(accs, 'test_acc.pt')
-    print(accs)
+    for ep in range(1, 2):
+        train(ep, train_loader)
+        print('training done')
+        test(ep, test_loader)
+#+END_SRC

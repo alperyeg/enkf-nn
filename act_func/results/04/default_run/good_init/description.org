@@ -1,0 +1,8 @@
+* conv net run
+- 1 epoch 
+- activation function is sigmoid 
+- weights are normal distributed with mean=0 and std=0.1
+- EnKF
+- Cross entropy loss
+- std=0.1
+- normalization mu = 0.1307, std = 0.3081

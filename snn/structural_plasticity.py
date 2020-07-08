@@ -53,7 +53,7 @@ The network is build as follows:
 import pickle
 
 import growth_curves
-import matplotlib.pyplot as pl
+import matplotlib.pyplot as plt
 # IMPORT LIBS
 import mnist.data
 import mnist.spike_generator
@@ -66,9 +66,9 @@ import pandas as pd
 class StructuralPlasticity:
     def __init__(self):
         # SIMULATION PARAMETERS
-        self.input_type = 'bellec'
+        self.input_type = 'greyvalue'
         # simulated time (ms)
-        self.t_sim = 60. # 60000.0
+        self.t_sim = 78.4  # 60000.0
         # simulation step (ms).
         self.dt = 0.1
 
@@ -80,8 +80,8 @@ class StructuralPlasticity:
         self.number_output_clusters = 10
 
         # Structural_plasticity properties
-        self.update_interval = 100
-        self.record_interval = 1000.0
+        self.update_interval = 0
+        self.record_interval = 78.4
         # rate of background Poisson input
         self.bg_rate = 10000.0
         self.neuron_model = 'iaf_psc_alpha'
@@ -110,8 +110,8 @@ class StructuralPlasticity:
         self.total_connections_e = []
         self.total_connections_i = []
 
-        self.mean_ca_e_out_0 = []
-        self.mean_ca_i_out_0 = []
+        self.ca_e_out = []
+        self.ca_i_out = []
         self.total_connections_e_out_0 = []
         self.total_connections_i_out_0 = []
 
@@ -146,12 +146,14 @@ class StructuralPlasticity:
         self.test_px = None
         self.test_lbl = None
 
+        self.train_data, self.train_label, self.test_data, self.test_label = ([] for _ in range(4))
+
     def get_mnist_data(self):
         self.target_px, self.target_lbl, self.test_px, self.test_lbl = \
             mnist.data.fetch(path='./mnist/mnist784_dat/',
                              labels=self.target_label)
         self.other_px, self.other_lbl, self.test_px, self.test_lbl = \
-            mnist.data.fetch(path='./mnist/mnist784_dat/', \
+            mnist.data.fetch(path='./mnist/mnist784_dat/',
                              labels=self.other_label)
 
     def prepare_simulation(self):
@@ -231,92 +233,67 @@ class StructuralPlasticity:
         nest.Connect(self.nodes_in, self.input_spike_detector)
         # nest.Connect(self.pixel_rate_generators, self.input_spike_detector)
 
-    def get_external_input(self):
-        self.train_px_one, self.train_lb_one, self.test_px_one, self.test_lb_one = \
-            mnist.data.fetch(path='./mnist/mnist784_dat/', labels=['1'])
-        self.train_px_other, self.train_lb_other, self.test_px_other, self.test_lb_other = \
-            mnist.data.fetch(path='./mnist/mnist784_dat/',
-                             labels=['0', '2', '3', '4', '5', '6', '7', '8',
-                                     '9'])
+    def get_external_input_batched(self, minibatch=True, n_batches=64):
+        self.train_data, self.train_label, self.test_data, self.test_label = mnist.data.fetch(
+            path='./mnist/mnist_784')
+        if minibatch:
+            self.t_sim = n_batches * self.record_interval
+            self.train_data = numpy.array_split(self.train_data, int(
+                len(self.train_data) / n_batches))
+            self.train_label = numpy.array_split(self.train_label, int(
+                len(self.train_label) / n_batches))
+            self.test_data = numpy.array_split(self.test_data, int(
+                len(self.test_data) / n_batches))
+            self.test_label = numpy.array_split(self.test_label, int(
+                len(self.test_label) / n_batches))
+        return self.train_data, self.train_label, self.test_data, self.test_label
 
-    def set_external_input(self, iteration):
-        random_id = numpy.random.randint(low=0, high=len(self.train_px_one))
-        image = self.train_px_one[random_id]
-        # Save image for reference
-        plottable_image = numpy.reshape(image, (28, 28))
-        pl.imshow(plottable_image, cmap='gray_r')
-        pl.title('Index: {}'.format(random_id))
-        pl.savefig('normal_input{}.eps'.format(iteration), format='eps')
-        pl.close()
-        if self.input_type == 'greyvalue':
-            rates = mnist.spike_generator.greyvalue(image,
-                                                    min_rate=1, max_rate=100)
-            generator_stats = [{'rate': w} for w in rates]
-            nest.SetStatus(self.pixel_rate_generators, generator_stats)
-        elif self.input_type == 'greyvalue_sequential':
-            rates = mnist.spike_generator.greyvalue_sequential(image,
-                                                               min_rate=1,
-                                                               max_rate=100,
-                                                               start_time=0,
-                                                               end_time=783)
-            generator_stats = [{'rate': w} for w in rates]
-            nest.SetStatus(self.pixel_rate_generators, generator_stats)
+    def set_external_input_batched(self, online=True, random_id=0):
+        if online:
+            print('Images with labels {} are used'.format(
+                self.train_label[random_id]))
+            image_batches = self.train_data[random_id]
+            train_spike_times_last = 0.
+            iter_neuron_spike_times = []
+            if image_batches.ndim == 1:
+                image_batches = [image_batches]
+            for image in image_batches:
+                # TODO change generators
+                if self.input_type == 'greyvalue':
+                    rates = mnist.spike_generator.greyvalue(image,
+                                                            min_rate=1,
+                                                            max_rate=100)
+                    generator_stats = [{'rate': w} for w in rates]
+                    nest.SetStatus(self.pixel_rate_generators, generator_stats)
+                elif self.input_type == 'greyvalue_sequential':
+                    rates = mnist.spike_generator.greyvalue_sequential(image,
+                                                                       min_rate=1,
+                                                                       max_rate=100,
+                                                                       start_time=0,
+                                                                       end_time=783)
+                    generator_stats = [{'rate': w} for w in rates]
+                    nest.SetStatus(self.pixel_rate_generators, generator_stats)
+
+                else:
+                    train_spikes, train_spike_times = mnist.spike_generator.bellec_spikes(
+                        self.train_data[random_id],
+                        self.number_input_neurons, self.dt)
+                    for ii, ii_spike_gen in enumerate(
+                            self.pixel_rate_generators):
+                        iter_neuron_spike_times = numpy.multiply(
+                            train_spikes[:, ii],
+                            train_spike_times)
+                        nest.SetStatus([ii_spike_gen],
+                                       {"spike_times": iter_neuron_spike_times[
+                                           iter_neuron_spike_times != 0],
+                                        "spike_weights": [1500.] * len(
+                                            iter_neuron_spike_times[
+                                                iter_neuron_spike_times != 0])}
+                                       )
 
         else:
-            train_spikes, train_spike_times = mnist.spike_generator.bellec_spikes(
-               self.train_px_one[random_id], self.number_input_neurons, self.dt)
-            for ii, ii_spike_gen in enumerate(self.pixel_rate_generators):
-                iter_neuron_spike_times = numpy.multiply(train_spikes[:, ii],
-                                                         train_spike_times)
-                nest.SetStatus([ii_spike_gen],
-                               {"spike_times": iter_neuron_spike_times[
-                                   iter_neuron_spike_times != 0],
-                                "spike_weights": [1500.] * len(
-                                    iter_neuron_spike_times[
-                                        iter_neuron_spike_times != 0])}
-                               )
-
-    def set_other_external_input(self, iteration):
-        random_id = numpy.random.randint(low=0, high=len(self.train_px_other))
-        image = self.train_px_other[random_id]
-        # Save other image for reference
-        plottable_image = numpy.reshape(image, (28, 28))
-        pl.imshow(plottable_image, cmap='gray_r')
-        pl.title('Index: {}'.format(random_id))
-        pl.savefig('other_input{}.eps'.format(iteration), format='eps')
-        pl.close()
-        # rates = mnist.spike_generator.greyvalue(image,
-        #                                         min_rate=1, max_rate=100)
-        # generator_stats = [{'rate': w} for w in rates]
-        # nest.SetStatus(self.pixel_rate_generators, generator_stats)
-
-    def test_external_input(self, iteration):
-        random_id = numpy.random.randint(low=0, high=len(self.test_px_one))
-        image = self.test_px_one[random_id]
-        # Save image for reference
-        plottable_image = numpy.reshape(image, (28, 28))
-        pl.imshow(plottable_image, cmap='gray_r')
-        pl.title('Test Index: {}'.format(random_id))
-        pl.savefig('normal_input{}.eps'.format(iteration), format='eps')
-        pl.close()
-        # rates = mnist.spike_generator.greyvalue(image,
-        #                                         min_rate=1, max_rate=100)
-        # generator_stats = [{'rate': w} for w in rates]
-        # nest.SetStatus(self.pixel_rate_generators, generator_stats)
-
-    def test_other_external_input(self, iteration):
-        random_id = numpy.random.randint(low=0, high=len(self.test_px_other))
-        image = self.test_px_other[random_id]
-        # Save other image for reference
-        plottable_image = numpy.reshape(image, (28, 28))
-        pl.imshow(plottable_image, cmap='gray_r')
-        pl.title('Test Index: {}'.format(random_id))
-        pl.savefig('other_input{}.eps'.format(iteration), format='eps')
-        pl.close()
-        # rates = mnist.spike_generator.greyvalue(image,
-        #                                         min_rate=1, max_rate=100)
-        # generator_stats = [{'rate': w} for w in rates]
-        # nest.SetStatus(self.pixel_rate_generators, generator_stats)
+            # TODO add mini-batch approach
+            pass
 
     def connect_greyvalue_input(self, n_img):
         self.pixel_rate_generators = nest.Create("poisson_generator",
@@ -326,7 +303,7 @@ class StructuralPlasticity:
         nest.Connect(self.pixel_rate_generators, self.nodes_in, "one_to_one",
                      syn_spec=syn_dict)
         # Input neurons to bulk
-        syn_dict = {"model": "random_synapse", "weight": weights}
+        syn_dict = {"model": "random_synapse"}
         print(self.nodes_e[0:len(self.nodes_in)])
         nest.Connect(self.nodes_in, self.nodes_e[0:len(self.nodes_in)],
                      "one_to_one", syn_spec=syn_dict)
@@ -336,7 +313,8 @@ class StructuralPlasticity:
             self.target_px[n_img], start_time=0, end_time=783, min_rate=0,
             max_rate=10)
         # FIXME changed to len(rates) from len(offsets)
-        self.pixel_rate_generators = nest.Create("poisson_generator", len(rates))
+        self.pixel_rate_generators = nest.Create(
+            "poisson_generator", len(rates))
         # FIXME changed commented out
         # nest.SetStatus(pixel_rate_generators, generator_stats)
         # Poisson to input neurons
@@ -353,7 +331,7 @@ class StructuralPlasticity:
                                                  self.number_input_neurons)
         nest.Connect(self.pixel_rate_generators, self.nodes_in, "one_to_one")
         weights = {'distribution': 'uniform',
-                   'low': self.psc_i,  'high': self.psc_e,}
+                   'low': self.psc_i,  'high': self.psc_e, }
         syn_dict = {"model": "random_synapse", "weight": weights}
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.05 * self.number_bulk_exc_neurons)}
@@ -375,7 +353,7 @@ class StructuralPlasticity:
             if input_on:
                 if ii == output_region:
                     gre = growth_curves.correct_input_growth_curve_e
-                    gri = growth_curves.correct_input_growth_curve_i
+                    gri = growth_curves.correct_input_growth3_curve_i
                 else:
                     gre = growth_curves.other_input_growth_curve
                     gri = growth_curves.other_input_growth_curve
@@ -402,9 +380,9 @@ class StructuralPlasticity:
             nest.SetStatus(self.nodes_out_i[ii], 'synaptic_elements_param',
                            synaptic_elems_out_i)
 
-    # After a couple of iterations we want to freeze the bulk. We will do this only by setting the 
-    # growth rate to 0 in the dentritic synaptic elements to still allow new connections to 
-    # the output population. 
+    # After a couple of iterations we want to freeze the bulk. We will do this only by setting the
+    # growth rate to 0 in the dentritic synaptic elements to still allow new connections to
+    # the output population.
     def freeze_bulk(self):
         freeze = {'growth_rate': 0.0}
         synaptic_elems_out_e = {
@@ -422,10 +400,16 @@ class StructuralPlasticity:
         nest.SetStatus(self.nodes_i, 'synaptic_elements_param',
                        synaptic_elems_out_i)
 
+    @staticmethod
+    def rewire(connections):
+        for c in connections:
+            syn_dict = {"model": "static_synapse", "weight": c[3]}
+            nest.Connect(c[1], c[2], syn_spec=syn_dict)
+
     def connect_internal_bulk(self):
         # Connect bulk
         weights = {'distribution': 'uniform',
-                   'low': 0.0,  'high': self.psc_e,}
+                   'low': 0.0,  'high': self.psc_e, }
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.09 * self.number_bulk_exc_neurons)}
         syn_dict = {"model": "random_synapse", "weight": weights}
@@ -437,7 +421,7 @@ class StructuralPlasticity:
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.12 * self.number_bulk_exc_neurons)}
         weights = {'distribution': 'uniform',
-                   'low': self.psc_i,  'high': 0.0,}
+                   'low': self.psc_i,  'high': 0.0, }
         syn_dict = {"model": "random_synapse", "weight": weights}
         nest.Connect(self.nodes_i, self.nodes_e, conn_dict, syn_spec=syn_dict)
         conn_dict = {'rule': 'fixed_outdegree',
@@ -448,7 +432,7 @@ class StructuralPlasticity:
     def connect_bulk_to_out(self):
         # Bulk to out
         weights = {'distribution': 'uniform',
-                   'low': 0.0,  'high': self.psc_e,}
+                   'low': 0.0,  'high': self.psc_e, }
         conn_dict = {'rule': 'fixed_outdegree',
                      'outdegree': int(0.23 * self.number_output_clusters)}
         syn_dict = {"model": "random_synapse", "weight": weights}
@@ -469,21 +453,14 @@ class StructuralPlasticity:
             self.connect_greyvalue_sequential_input(n_img)
 
     def record_ca(self):
-        ca_e = nest.GetStatus(self.nodes_e, 'Ca'),  # Calcium concentration
-        self.mean_ca_e.append(numpy.mean(ca_e))
-        ca_i = nest.GetStatus(self.nodes_i, 'Ca'),  # Calcium concentration
-        self.mean_ca_i.append(numpy.mean(ca_i))
-
-        ca_e = nest.GetStatus(self.nodes_out_e[0],
+        ca_e = nest.GetStatus(self.nodes_out_e,
                               'Ca'),  # Calcium concentration
-        self.mean_ca_e_out_0.append(numpy.mean(ca_e))
-        ca_i = nest.GetStatus(self.nodes_out_i[0],
+        self.ca_e_out.append(ca_e)
+        ca_i = nest.GetStatus(self.nodes_out_i,
                               'Ca'),  # Calcium concentration
-        self.mean_ca_i_out_0.append(numpy.mean(ca_i))
+        self.ca_i_out.append(ca_i)
 
     def clear_records(self):
-        self.mean_ca_i_out_0.clear()
-        self.mean_ca_e_out_0.clear()
         self.mean_ca_i.clear()
         self.mean_ca_e.clear()
         self.total_connections_e.clear()
@@ -573,7 +550,7 @@ class StructuralPlasticity:
             if i % 20 == 0:
                 print("Progress: " + str(i / 2) + "%")
             self.record_ca()
-            self.record_connectivity()
+            # self.record_connectivity()
         print("Simulation loop finished successfully")
 
     def checkpoint(self, id):
@@ -631,29 +608,30 @@ if __name__ == '__main__':
     example.connect_bulk_to_out()
     # example.connect_internal_out()
     example.create_input_spike_detectors()
-    example.get_external_input()
-    # Start training 
+    train_data, train_label, test_data, test_label = example.get_external_input_batched(minibatch=False)
+    n_ensembles = 1000
+    # Start training
     for i in range(1):
         print('Iteration {}'.format(i))
         example.clear_records()
-        # Show a one
-        example.set_external_input(i)
-        # example.set_growthrate_output(0, True, i)
+        rnd_int = numpy.random.randint(low=0, high=len(example.train_data))
+        # Get mini batch
+        example.set_external_input_batched(online=True, random_id=rnd_int)
+        # TODO set different weights per ensemble
         example.simulate()
         save_connections()
-        print("One was shown")
+        print("Connections saved")
+        example.plot_input_spikes(i)
+        example.plot_data(i)
+        example.plot_data_out(i)
         import sys
         sys.exit()
+        # Rewire the network with the new weights
+        # example.rewire(connections)
         # No input
         # example.clear_input()
         # example.set_growthrate_output(0, False, i)
-        example.simulate()
-        print("No input was shown")
-        # Show anything else
-        example.set_other_external_input(i)
-        # example.set_growthrate_output(1, True, i)
-        example.simulate()
-        print("Show something different")
+        # example.simulate()
         if i == 0:
             example.freeze_bulk()
         example.plot_input_spikes(i)

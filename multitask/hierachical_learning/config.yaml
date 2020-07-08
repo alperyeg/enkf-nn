@@ -9,7 +9,7 @@ filename: '../dataloader_notmnist.npy' # filename for notMNIST dataloader, in co
 results_dir: 'results' # name of the directory to save the resulting images
 
 epochs: 2       # Number of epochs to train for
-load_model: False # if the model should be loaded from previous session
+load_model: True # if the model should be loaded from previous session
 batch_size: 128
 iters: 10000     # How many generator iterations to train for
 manualSeed: 123  # set graph-level seed

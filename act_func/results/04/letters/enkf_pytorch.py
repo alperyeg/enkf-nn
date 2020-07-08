@@ -1,9 +1,9 @@
 import numpy as np
 import abc
-import time
 import torch
 from abc import ABCMeta
-from torch.nn.functional import one_hot
+
+# TODO: revise the documentation
 
 
 class KalmanFilter(metaclass=ABCMeta):
@@ -75,7 +75,6 @@ class EnsembleKalmanFilter(KalmanFilter):
         self.gamma = 0.
         self.gamma_s = 0
         self.dims = 0
-        self.times = {}
 
     def fit(self, data, ensemble, ensemble_size, moments1, observations,
             model_output, gamma, noise=0.):
@@ -109,8 +108,6 @@ class EnsembleKalmanFilter(KalmanFilter):
                 self.gamma = np.eye(self.gamma_s)
         else:
             self.gamma = gamma
-
-        self.times = {'Cpp':[], 'Cup':[], 'update':[], 'lstsq': [], 'mm': []} 
 
         # copy the data so we do not overwrite the original arguments
         self.ensemble = ensemble.clone()
@@ -149,19 +146,11 @@ class EnsembleKalmanFilter(KalmanFilter):
                     # now get only the individuals output according to idx
                     g_tmp = model_output[:, :, d]
                     # Calculate the covariances
-                    torch.cuda.synchronize(self.device)
-                    t = time.time()
                     Cpp = _cov_mat(g_tmp, g_tmp, ensemble_size)
-                    self.times['Cpp'].append(time.time()-t)
-                    t = time.time()
                     Cup = _cov_mat(self.ensemble, g_tmp, ensemble_size)
-                    self.times['Cup'].append(time.time()-t)
-                    t = time.time()
                     self.ensemble = _update_step(self.ensemble,
                                                  self.observations[d],
-                                                 g_tmp, self.gamma, Cpp, Cup, self.times,
-                                                 self.device)
-                    self.times['update'].append(time.time()-t)
+                                                 g_tmp, self.gamma, Cpp, Cup)
 
             # m = torch.distributions.Normal(self.ensemble.mean(),
             #                                self.ensemble.std())
@@ -171,28 +160,16 @@ class EnsembleKalmanFilter(KalmanFilter):
             #     size=(self.ensemble.shape[1], ensemble_size), device=self.device)
             # mm = torch.mm(cov, rnd).to(self.device)
             # self.ensemble += mm.t()
-        print('Cpp', Cpp)
         return self
 
 
-def _update_step(ensemble, observations, g, gamma, Cpp, Cup, times, device):
+def _update_step(ensemble, observations, g, gamma, Cpp, Cup):
     """
     Update step of the kalman filter
     Calculates the covariances and returns new ensembles
     """
     # return ensemble + (Cup @ np.linalg.lstsq(Cpp+gamma, (observations - g).T)[0]).T
     return torch.mm(Cup, torch.lstsq((observations-g).t(), Cpp+gamma)[0]).t() + ensemble
-    # c = Cpp + gamma
-    # o = observations-g
-    # o = o.t()
-    # t = time.time()
-    # lstsq = torch.lstsq(o, c)[0]
-    # times['lstsq'].append(time.time() - t)
-    # t = time.time()
-    # r = torch.mm(Cup, lstsq)
-    # r = r.t()
-    # times['mm'].append(time.time() - t)
-    # return r + ensemble
 
 
 def _cov_mat(x, y, ensemble_size):
@@ -242,10 +219,8 @@ def _one_hot_vector(index, shape):
 
 
 def _encode_targets(targets, shape):
-    #return np.array(
-    #    [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
-    return one_hot(targets, shape).float()
-    
+    return np.array(
+        [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
 
 
 def _shuffle(data, targets):

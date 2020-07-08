@@ -127,6 +127,12 @@ dmypy.json
 # Npy save
 *.npy
 
+# torch save
+*.pt
+
+#profiling files
+*.profile
+
 # folders
 MNIST/
 FashionMNIST/

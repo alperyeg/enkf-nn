@@ -136,7 +136,6 @@ class ConvNet(nn.Module):
 
 def init_weights(m):
     mean = 0.
-    # std = 5.
     if type(m) == nn.Linear:
         m.weight.data.normal_(mean, std)
         if m.bias is not None:
@@ -153,7 +152,8 @@ def get_data(batch_size, device):
     # training set
     transform = transforms.Compose(
         [transforms.ToTensor(),
-         transforms.Normalize([0.], [1.])])
+         transforms.Normalize([0], [1])
+         ])
     train_loader_mnist = torch.utils.data.DataLoader(
         datasets.MNIST(root='../', train=True, download=True,
                        transform=transform),
@@ -201,7 +201,7 @@ def train(epoch, train_loader_mnist, optimizer):
         train_loss += loss.item()
         optimizer.step()
 
-        if idx % 8 == 0:
+        if idx % 200 == 0:
             print('Loss {} in epoch {}, idx {}'.format(
                 loss.item(), epoch, idx))
             grads['conv1_grad'].append(net.conv1.weight.grad.detach().numpy())
@@ -214,91 +214,53 @@ def train(epoch, train_loader_mnist, optimizer):
 
     print('Average loss: {} epoch:{}'.format(
         train_loss / len(train_loader_mnist.dataset), epoch))
-    if epoch % 1 == 0:
-        # np.save('{}_gradients_ep{}.npy'.format(optimizer.__class__.__name__, epoch), grads)
-        # np.save('{}_act_func_ep{}.npy'.format(optimizer.__class__.__name__, epoch), act_func)
-        pass
+    # np.save('gradients.npy', grads)
+    # np.save('act_func.npy', act_func)
 
 
-def test(epoch, test_loader_mnist, optimizer):
+def test(epoch, test_loader_mnist):
     net.eval()
     test_accuracy = 0
     test_loss = 0
-    ta = []
     with torch.no_grad():
         for idx, (img, target) in enumerate(test_loader_mnist):
             output, _, _ = net(img)
-            loss = F.cross_entropy(output, target)
+            loss = criterion(output, target)
             test_loss += loss.item()
             # network prediction
             pred = output.argmax(1, keepdim=True)
             # how many image are correct classified, compare with targets
             test_accuracy += pred.eq(target.view_as(pred)).sum().item()
 
-            if idx % 8 == 0:
-                tmp_acc = pred.eq(target.view_as(pred)).sum().item() * 100 / len(target)
-                ta.append(tmp_acc)
+            if idx % 10 == 0:
                 print('Test Loss {} in epoch {}, idx {}'.format(
                     loss.item(), epoch, idx))
-                print('Test accuracy {} in epoch {}, idx {}'.format(tmp_acc, epoch, idx))
 
-    print('Test accuracy: {} Average test loss: {} epoch:{}'.format(
-        100 * test_accuracy / len(test_loader_mnist.dataset),
-        test_loss / len(test_loader_mnist.dataset), epoch))
-    # if 100 * test_accuracy / len(test_loader_mnist.dataset) >= 80:
-    #     with open('std_optim_out.txt', 'a') as f:
-    #         opt_name = optimizer.__class__.__name__
-    #         ta = 100 * test_accuracy / len(test_loader_mnist.dataset)
-    #         print(std, opt_name, ta, epoch, file=f)
-    #         return True
-    # else:
-    #     return False
-    torch.save(ta, '{}_test_accuracy_iteration{}'.format(optimizer.__class__.__name__, 
-                                                         epoch))
-    return 100 * test_accuracy / len(test_loader_mnist.dataset)
+        print('Test accuracy: {} Average test loss: {} epoch:{}'.format(
+            100 * test_accuracy / len(test_loader_mnist.dataset),
+            test_loss / len(test_loader_mnist.dataset), epoch))
 
 
 if __name__ == '__main__':
     torch.manual_seed(0)
-    np.random.seed(0)
     net = ConvNet()
-    # net.apply(init_weights)
-    # optimizer = optim.Adam(net.parameters(), lr=1e-3)
-    # optimizer = optim.RMSprop(net.parameters())
-    # optimizer = optim.Adagrad(net.parameters())
-    # optimizer = optim.SGD(net.parameters(), lr=0.9)
     # Cross entropy loss to calculate the loss
     criterion = nn.CrossEntropyLoss()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print('Runs on {}'.format(device))
     batch = 64
+    std = 0
     train_loader, test_loader = get_data(batch, device)
-    # for ep in range(0, 50):
-    #     train(ep, train_loader)
-    #     print('training done')
-    #     test(ep, test_loader)
     adam = optim.Adam(net.parameters(), lr=1e-3)
     sgd = optim.SGD(net.parameters(), lr=0.1, momentum=0.9)
     rmsprop = optim.RMSprop(net.parameters())
     adagrad = optim.Adagrad(net.parameters())
-    # optimizers = [sgd, adam, rmsprop, adagrad]
-    optimizers = [adam, sgd]
-    # stds = [0.01, 0.1, 1, 3, 5, 10]
-    stds = [1]
-    accs = []
-    # with open('std_optim_out.txt', 'w') as f:
-    #    print('std, optimizer, test_accuracy, epoch', file=f)
+    optimizers = [sgd, adam, rmsprop, adagrad]
+    stds = [0.01, 0.1, 1, 5, 10]
     for opt in optimizers:
         for s in stds:
             std = s
             net.apply(init_weights)
-            acc_reached = False
-            for ep in range(1, 11):
+            for ep in range(1, 3):
                 train(ep, train_loader, opt)
                 print('training done')
-                acc_reached = test(ep, test_loader, opt)
-                accs.append((s, acc_reached, opt.__class__.__name__))
-                # if acc_reached:
-                #     break
-    # torch.save(accs, 'test_acc.pt')
-    print(accs)
+                test(ep, test_loader)

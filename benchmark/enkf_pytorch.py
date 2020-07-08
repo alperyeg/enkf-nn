@@ -104,27 +104,22 @@ class EnsembleKalmanFilter(KalmanFilter):
             Cup: nd numpy array, covariance matrix of the model output and the ensembles 
         """
         # get shapes
-        t = time.time()
         self.gamma_s, self.dims = _get_shapes(observations, model_output)
-        print('get_shapes: ', time.time() - t)
-        
+
         if isinstance(gamma, (int, float)):
             if float(gamma) == 0.:
                 self.gamma = np.eye(self.gamma_s)
         else:
             self.gamma = gamma
 
-        self.times = {'Cpp':[], 'Cup':[], 'update':[], 'lstsq': [], 'mm': [], 'model_out': []} 
+        self.times = {'Cpp':[], 'Cup':[], 'update':[], 'lstsq': [], 'mm': []}
 
         # copy the data so we do not overwrite the original arguments
-        t = time.time()
         self.ensemble = ensemble.clone()
         self.observations = observations.clone()
         self.observations = _encode_targets(observations, self.gamma_s)
         self.data = data.clone()
-        print('clones : ', time.time() - t)
         # convert to pytorch
-        t = time.time()
         self.ensemble = torch.as_tensor(
             self.ensemble, device=self.device, dtype=torch.float32)
         self.observations = torch.as_tensor(
@@ -134,7 +129,6 @@ class EnsembleKalmanFilter(KalmanFilter):
             self.gamma, device=self.device, dtype=torch.float32)
         model_output = torch.as_tensor(
             model_output, device=self.device, dtype=torch.float32)
-        print('as tensors : ', time.time() - t)
 
         for i in range(self.maxit):
             if (i % 100) == 0:
@@ -147,57 +141,32 @@ class EnsembleKalmanFilter(KalmanFilter):
                 num_batches = 1
             else:
                 num_batches = self.n_batches
-            t = time.time()
             mini_batches = _get_batches(
                 num_batches, shape=self.dims, online=self.online)
-            print('get batches : ', time.time() - t)
             mini_batches = torch.as_tensor(mini_batches, device=self.device)
-            mt = time.time()
-            s = model_output.shape
-            model_out = torch.empty((s[2], s[0], s[1]), device=self.device)
-            for d in mini_batches[0]:
-                model_out[d] = model_output[:,:,d]
-            # model_out = model_out.to(self.device)
-            tt = time.time()
             for idx in mini_batches:
-                print('model reshaping :', time.time() - mt)
                 # in case of online learning idx should be an int
                 # put it into a list to loop over it
-                tmb = time.time()
                 for d in idx:
                     # now get only the individuals output according to idx
-                    # t = time.time()
-                    # g_tmp = model_out[d]
-                    # self.times['model_out'].append(time.time()-t)
+                    g_tmp = model_output[:, :, d]
                     # Calculate the covariances
                     t = time.time()
-                    Cpp = _cov_mat(model_out[d], model_out[d], ensemble_size)
+                    Cpp = _cov_mat(g_tmp, g_tmp, ensemble_size)
                     self.times['Cpp'].append(time.time()-t)
                     t = time.time()
-                    Cup = _cov_mat(self.ensemble, model_out[d], ensemble_size)
+                    Cup = _cov_mat(self.ensemble, g_tmp, ensemble_size)
                     self.times['Cup'].append(time.time()-t)
                     t = time.time()
-                    # self.ensemble = _update_step(self.ensemble,
-                    #                              self.observations[d],
-                    #                              model_out[d], self.gamma, Cpp, Cup, self.times,
-                    #                              self.device)
-                    self.ensemble += torch.mm(Cup, torch.lstsq((self.observations[d]-model_out[d]).t(), Cpp+self.gamma)[0]).t() 
+                    self.ensemble = _update_step(self.ensemble,
+                                                 self.observations[d],
+                                                 g_tmp, self.gamma, Cpp, Cup)
                     self.times['update'].append(time.time()-t)
-                print('mini-batch: ', time.time() - tmb)
-            print('total loop:', time.time() - tt)
 
-            # m = torch.distributions.Normal(self.ensemble.mean(),
-            #                                self.ensemble.std())
-            # self.ensemble += m.sample(self.ensemble.shape)
-            # cov = 0.01 * _cov_mat(self.ensemble, self.ensemble, ensemble_size)
-            # rnd = torch.randn(
-            #     size=(self.ensemble.shape[1], ensemble_size), device=self.device)
-            # mm = torch.mm(cov, rnd).to(self.device)
-            # self.ensemble += mm.t()
         return self
 
 
-def _update_step(ensemble, observations, g, gamma, Cpp, Cup, times, device):
+def _update_step(ensemble, observations, g, gamma, Cpp, Cup):
     """
     Update step of the kalman filter
     Calculates the covariances and returns new ensembles
@@ -267,7 +236,7 @@ def _encode_targets(targets, shape):
     #return np.array(
     #    [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
     return one_hot(targets, shape).float()
-    
+
 
 
 def _shuffle(data, targets):

@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -149,9 +151,9 @@ class NotMNISTLoader:
 
 
 if __name__ == '__main__':
-    folder_path = '/home/yegenoglu/Documents/toolbox/backups/enkf-nn/multitask/notMNIST_large'
+    folder_path = 'notMNIST_large'
     not_mnist = NotMNISTLoader(folder_path=folder_path)
-    not_mnist.create_dataloader(batch_size=128, save=True, standardize=False,
+    not_mnist.create_dataloader(batch_size=64, save=True, standardize=False,
                                 train_size=60000, test_size=10000,
                                 **{'filename': './dataloader_notmnist.npy',
                                    'shuffle': True})

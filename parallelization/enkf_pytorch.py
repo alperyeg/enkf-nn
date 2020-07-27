@@ -1,9 +1,15 @@
 import numpy as np
 import abc
 import torch
+
+import mpi4torch
+import mpi4py.MPI
+
 from abc import ABCMeta
 
-# TODO: revise the documentation
+comm = mpi4torch.COMM_WORLD
+rank = comm.rank
+size = comm.size
 
 
 class KalmanFilter(metaclass=ABCMeta):
@@ -110,8 +116,8 @@ class EnsembleKalmanFilter(KalmanFilter):
             self.gamma = gamma
 
         # copy the data so we do not overwrite the original arguments
-        self.ensemble = ensemble.clone()
-        self.observations = observations.clone()
+        self.ensemble = ensemble.clone() // size
+        self.observations = observations.clone() // size
         self.observations = _encode_targets(observations, self.gamma_s)
         self.data = data.clone()
         # convert to pytorch
@@ -151,6 +157,10 @@ class EnsembleKalmanFilter(KalmanFilter):
                     self.ensemble = _update_step(self.ensemble,
                                                  self.observations[d],
                                                  g_tmp, self.gamma, Cpp, Cup)
+                    Cpp = comm.Allreduce(
+                        Cpp, mpi4torch.MPI_SUM) / ensemble_size
+                    Cup = comm.Allreduce(
+                        Cup, mpi4torch.MPI_SUM) / ensemble_size
 
             # m = torch.distributions.Normal(self.ensemble.mean(),
             #                                self.ensemble.std())

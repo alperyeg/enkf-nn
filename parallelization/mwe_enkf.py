@@ -15,10 +15,10 @@ def enkf_lstsq(ens, model_out, obs, gamma, batch_s, ensemble_size):
             (g_tmp - g_tmp.mean(0)), (g_tmp - g_tmp.mean(0)), dims=([0], [0])) / ensemble_size
         Cup = torch.tensordot(
             (ens - ens.mean(0)), (g_tmp - g_tmp.mean(0)), dims=([0], [0])) / ensemble_size
-        
+
         Cpp = comm.Allreduce(Cpp, mpi4torch.MPI_SUM)/ensemble_size
-        Cup = comm.Allreduce(Cup, mpi4torch.MPI_SUM)/ensemble_size 
-        
+        Cup = comm.Allreduce(Cup, mpi4torch.MPI_SUM)/ensemble_size
+
         new_ens = torch.mm(Cup, torch.lstsq(
             (obs[i] - g_tmp).t(), Cpp+gamma)[0]).t() + ens
         return new_ens
@@ -34,7 +34,7 @@ def enkf_cholesky(ens, model_out, obs, gamma, batch_s, ensemble_size):
     loss = torch.empty(batch_size, ensemble_size, gamma.shape[0])
     for i in range(batch_s):
         tmp[i] = torch.cholesky_inverse(Cpp[i] + gamma)
-        loss[i] = obs[i] - model_out[:, :, i]  
+        loss[i] = obs[i] - model_out[:, :, i]
     # loss = (-1 * model_out + obs.reshape(gamma.shape[0], -1)
     #         ).reshape(-1, ensemble_size, gamma.shape[0])
     mm = torch.matmul(loss, tmp)
@@ -50,7 +50,8 @@ if __name__ == '__main__':
     ensemble_size = 5000
     gamma = torch.eye(10, device=device) * 0.01
     ensembles = torch.randn(ensemble_size//size, 18050, device=device)
-    model_output = torch.randn(ensemble_size//size, 10, batch_size, device=device)
+    model_output = torch.randn(
+        ensemble_size//size, 10, batch_size, device=device)
     observations = torch.randint(
         low=0, high=10, size=(batch_size,), device=device)
     observations = one_hot(observations)

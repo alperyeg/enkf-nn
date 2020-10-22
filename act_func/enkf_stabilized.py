@@ -3,7 +3,6 @@ import abc
 import torch
 from abc import ABCMeta
 from torch.nn.functional import one_hot
-from torch.nn.functional import binary_cross_entropy_with_logits as bce
 
 
 # TODO: revise the documentation
@@ -168,8 +167,6 @@ def _update_step(ensemble, observations, g, gamma, Cpp, Cup, device):
     Update step of the kalman filter
     Calculates the covariances and returns new ensembles
     """
-    # return ensemble + (Cup @ np.linalg.lstsq(Cpp+gamma, (observations - g).T)[0]).T
-    # return torch.mm(Cup, torch.lstsq((observations-g).t(), Cpp+gamma)[0]).t() + ensemble
     cpg_inv = torch.inverse((Cpp + gamma).cpu()).to(device)
     return torch.mm(torch.mm(Cup, cpg_inv).t(), (observations-g)) + ensemble
 
@@ -179,20 +176,16 @@ def _update_step_regularized(ensemble, observations, g, gamma, cgu, ru,
     cgu_gamma = torch.einsum('ikl, kk -> ikl', cgu, gamma)
     obs = observations.t() - g
     cgu_obs = dt * torch.einsum('ijl, kjl -> ikl', cgu_gamma, obs)
-    # ru is gets an additional dimension and is repeated mini batch times
+    # ru gets an additional dimension and is repeated mini batch times
     cgu_obs_ru = cgu_obs + ru.unsqueeze(-1).repeat(1, 1, batch_size)
     update = cgu_obs_ru + ensemble.unsqueeze(-1).repeat(1, 1, batch_size)
     return update.mean(-1)
-    # return (dt * torch.mm(cgu_gamma, (observations - g)) + ru) + ensemble
 
 
 def _cov_mat(x, y, ensemble_size):
     """
     Covariance matrix
     """
-    # x_bar = _get_mean(x)
-    # y_bar = _get_mean(y)
-    # cov = 0.0
     return torch.tensordot((x - x.mean(0)), (y - y.mean(0)),
                            dims=([1], [1])) / ensemble_size
 
@@ -247,8 +240,6 @@ def _one_hot_vector(index, shape):
 
 
 def _encode_targets(targets, shape):
-    # return np.array(
-    #    [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
     return one_hot(targets, shape).float()
 
 

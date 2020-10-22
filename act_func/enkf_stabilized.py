@@ -153,12 +153,12 @@ class EnsembleKalmanFilter(KalmanFilter):
                 ru = torch.tensordot(cu, ens_mean, dims=([0], [0]))
                 cgu = torch.einsum("ij, jkl -> ikl", ens_mean,
                                    mo_mean) / ensemble_size
-                _update_step_regularized(ensemble=self.ensemble,
-                                         observations=self.observations,
-                                         g=model_output, gamma=self.gamma,
-                                         cgu=cgu, ru=ru,
-                                         batch_size=self.dims,
-                                         device=self.device, dt=1.)
+                self.ensemble = _update_step_regularized(ensemble=self.ensemble,
+                                                         observations=self.observations,
+                                                         g=model_output, gamma=self.gamma,
+                                                         cgu=cgu, ru=ru,
+                                                         batch_size=self.dims,
+                                                         device=self.device, dt=1.)
         return self
 
 

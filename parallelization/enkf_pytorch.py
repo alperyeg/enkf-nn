@@ -154,13 +154,15 @@ class EnsembleKalmanFilter(KalmanFilter):
                     # Calculate the covariances
                     Cpp = _cov_mat(g_tmp, g_tmp, ensemble_size)
                     Cup = _cov_mat(self.ensemble, g_tmp, ensemble_size)
-                    self.ensemble = _update_step(self.ensemble,
-                                                 self.observations[d],
-                                                 g_tmp, self.gamma, Cpp, Cup)
+
                     Cpp = comm.Allreduce(
                         Cpp, mpi4torch.MPI_SUM) / ensemble_size
                     Cup = comm.Allreduce(
                         Cup, mpi4torch.MPI_SUM) / ensemble_size
+
+                    self.ensemble = _update_step(self.ensemble,
+                                                 self.observations[d],
+                                                 g_tmp, self.gamma, Cpp, Cup)
 
             # m = torch.distributions.Normal(self.ensemble.mean(),
             #                                self.ensemble.std())

@@ -1,10 +1,12 @@
 import copy
+import mpi4torch
+import mpi4py.MPI
+import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torch.nn as nn
-import time
 # import matplotlib.pyplot as plt
 from numpy.linalg import norm
 import numpy as np
@@ -13,7 +15,11 @@ from enkf_pytorch import EnsembleKalmanFilter as EnKF
 from enkf_pytorch import _encode_targets
 
 
+comm = mpi4torch.COMM_WORLD
+rank = comm.rank
+size = comm.size
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Running on device {}".format(device))
 
 
 class DataLoader:
@@ -58,7 +64,7 @@ class DataLoader:
         trainloader_mnist = torch.utils.data.DataLoader(trainset_mnist,
                                                         batch_size=batch_size,
                                                         shuffle=False,
-                                                        num_workers=2)
+                                                        num_workers=0)
 
         testset_mnist = torchvision.datasets.MNIST(root=root,
                                                    train=False,
@@ -67,7 +73,7 @@ class DataLoader:
         testload_mnist = torch.utils.data.DataLoader(testset_mnist,
                                                      batch_size=batch_size,
                                                      shuffle=False,
-                                                     num_workers=2)
+                                                     num_workers=0)
         return trainloader_mnist, testload_mnist
 
     def dataiter_mnist(self):
@@ -112,15 +118,15 @@ class MnistOptimizee(torch.nn.Module):
         self.train_cost = []
         self.test_cost = []
         self.train_loss = []
-        self.test_loss = [] 
+        self.test_loss = []
         self.targets = []
         self.output_activity_train = []
         self.output_activity_test = []
         self.act_func = {'act1': [], 'act2': [], 'act1_mean': [],
-                         'act2_mean': [], 'act1_std': [], 'act2_std': [], 
+                         'act2_mean': [], 'act1_std': [], 'act2_std': [],
                          'act3': [], 'act3_mean': [], 'act3_std': []}
         self.test_act_func = {'act1': [], 'act2': [], 'act1_mean': [],
-                              'act2_mean': [], 'act1_std': [], 'act2_std': [], 
+                              'act2_mean': [], 'act1_std': [], 'act2_std': [],
                               'act3': [], 'act3_mean': [], 'act3_std': []}
 
         self.targets.append(self.labels.cpu().numpy())
@@ -238,7 +244,8 @@ class MnistOptimizee(torch.nn.Module):
             self.act_func['act1_std'].append(act1.std().item())
             self.act_func['act2_std'].append(act2.std().item())
             self.act_func['act3_std'].append(act3.std().item())
-            self.output_activity_train.append(F.softmax(outputs, dim=1).cpu().numpy())
+            self.output_activity_train.append(
+                F.softmax(outputs, dim=1).cpu().numpy())
             conv_loss = self.criterion(outputs, labels).item()
             self.train_loss.append(conv_loss)
             train_cost = _calculate_cost(_encode_targets(labels, 10),
@@ -250,7 +257,8 @@ class MnistOptimizee(torch.nn.Module):
             print('Loss:', conv_loss)
             self.train_cost.append(train_cost)
             self.train_acc.append(train_acc)
-            self.train_pred.append(np.argmax(F.softmax(outputs, dim=1).cpu().numpy(), 1))
+            self.train_pred.append(
+                np.argmax(F.softmax(outputs, dim=1).cpu().numpy(), 1))
 
             print('---- Test -----')
             test_output, act1, act2 = self.conv_net(self.test_input)
@@ -392,11 +400,11 @@ if __name__ == '__main__':
     root = '../multitask'
     n_ensembles = 5000
     conv_loss_mnist = []
-    # average test losses 
+    # average test losses
     test_losses = []
     act_func = {}
-    np.random.seed(0)
-    torch.manual_seed(0)
+    np.random.seed(rank)
+    torch.manual_seed(rank)
     batch_size = 64
     model = MnistOptimizee(root=root, batch_size=batch_size, seed=0,
                            n_ensembles=n_ensembles).to(device)
@@ -461,12 +469,12 @@ if __name__ == '__main__':
                 'train_loss': model.train_loss,
                 'test_loss': model.test_loss,
             }
-            torch.save(param_dict, 'conv_params_{}.pt'.format(i))
+            # torch.save(param_dict, 'conv_params_{}.pt'.format(i))
             act_func[str(i)] = {'train_act': model.act_func,
                                 'test_act':model.test_act_func}
             test_losses.append(test(model.conv_net, i, model.data_loader.test_mnist_loader,
                                      nn.CrossEntropyLoss(reduction='sum')))
-            torch.save(test_losses, 'test_losses_{}.pt'.format(i))
+            # torch.save(test_losses, 'test_losses_{}.pt'.format(i))
 
     
     param_dict = {
@@ -486,9 +494,9 @@ if __name__ == '__main__':
         'train_loss': model.train_loss,
         'test_loss': model.test_loss,
     }
-    torch.save(param_dict, 'conv_params.pt')
+    # torch.save(param_dict, 'conv_params.pt')
     # act_func[str(i)] = {'train_act': copy.deepcopy(model.act_func),
     #                     'test_act':copy.deepcopy(model.test_act_func)}
     # torch.save(act_func, 'act_func.pt')
-    torch.save(test_losses, 'test_losses.pt')
+    # torch.save(test_losses, 'test_losses.pt')
 

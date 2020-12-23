@@ -6,6 +6,7 @@ import mpi4torch
 import mpi4py.MPI
 
 from abc import ABCMeta
+from torch.nn.functional import one_hot
 
 comm = mpi4torch.COMM_WORLD
 rank = comm.rank
@@ -116,8 +117,8 @@ class EnsembleKalmanFilter(KalmanFilter):
             self.gamma = gamma
 
         # copy the data so we do not overwrite the original arguments
-        self.ensemble = ensemble.clone() // size
-        self.observations = observations.clone() // size
+        self.ensemble = ensemble.clone() # // size
+        self.observations = observations.clone() # // size
         self.observations = _encode_targets(observations, self.gamma_s)
         self.data = data.clone()
         # convert to pytorch
@@ -152,8 +153,8 @@ class EnsembleKalmanFilter(KalmanFilter):
                     # now get only the individuals output according to idx
                     g_tmp = model_output[:, :, d]
                     # Calculate the covariances
-                    Cpp = _cov_mat(g_tmp, g_tmp, ensemble_size)
-                    Cup = _cov_mat(self.ensemble, g_tmp, ensemble_size)
+                    Cpp = _cov_mat(g_tmp, g_tmp)
+                    Cup = _cov_mat(self.ensemble, g_tmp)
 
                     Cpp = comm.Allreduce(
                         Cpp, mpi4torch.MPI_SUM) / ensemble_size
@@ -180,11 +181,12 @@ def _update_step(ensemble, observations, g, gamma, Cpp, Cup):
     Update step of the kalman filter
     Calculates the covariances and returns new ensembles
     """
-    # return ensemble + (Cup @ np.linalg.lstsq(Cpp+gamma, (observations - g).T)[0]).T
-    return torch.mm(Cup, torch.lstsq((observations-g).t(), Cpp+gamma)[0]).t() + ensemble
+    # return torch.mm(Cup, torch.lstsq((observations-g).t(), Cpp+gamma)[0]).t() + ensemble
+    cpg_inv = torch.inverse(Cpp + gamma)
+    return torch.mm(torch.mm(Cup, cpg_inv), (observations-g).t()).t() + ensemble
 
 
-def _cov_mat(x, y, ensemble_size):
+def _cov_mat(x, y):
     """
     Covariance matrix
     """
@@ -193,7 +195,7 @@ def _cov_mat(x, y, ensemble_size):
 
     # cov = 0.0
     return torch.tensordot((x - x.mean(0)), (y - y.mean(0)),
-                           dims=([0], [0])) / ensemble_size
+                           dims=([0], [0]))
 
 
 def _get_mean(x):
@@ -231,8 +233,9 @@ def _one_hot_vector(index, shape):
 
 
 def _encode_targets(targets, shape):
-    return np.array(
-        [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
+    # return np.array(
+    #     [_one_hot_vector(targets[i], shape) for i in range(targets.shape[0])])
+    return one_hot(targets, shape).float()
 
 
 def _shuffle(data, targets):

@@ -8,7 +8,6 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torch.nn as nn
 # import matplotlib.pyplot as plt
-from numpy.linalg import norm
 import numpy as np
 from conv_net import ConvNet
 from enkf_pytorch import EnsembleKalmanFilter as EnKF
@@ -129,7 +128,7 @@ class MnistOptimizee(torch.nn.Module):
                               'act2_mean': [], 'act1_std': [], 'act2_std': [],
                               'act3': [], 'act3_mean': [], 'act3_std': []}
 
-        self.targets.append(self.labels.cpu().numpy())
+        self.targets.append(self.labels)
 
         # Covariance noise matrix
         self.cov = 0.0
@@ -163,7 +162,7 @@ class MnistOptimizee(torch.nn.Module):
 
             # conv_ensembles.append(params)
             # l = np.random.uniform(-.5, .5, size=length)
-            for _ in range(self.n_ensembles):
+            # for _ in range(self.n_ensembles):
                 #     stacked = []
                 #     for key in self.conv_net.state_dict().keys():
                 #         stacked.extend(
@@ -174,10 +173,11 @@ class MnistOptimizee(torch.nn.Module):
                 #     jitter = np.random.uniform(-0.1, 0.1) + j
                 #     tmp.append(jitter)
                 # conv_ensembles.append(tmp)
-                conv_ensembles.append(np.random.normal(0, 0.1,
-                                                       size=self.length))
-            return dict(conv_params=torch.as_tensor(np.array(conv_ensembles),
-                                                    device=device),
+                # conv_ensembles.append(np.random.normal(0, 0.1,
+                #                                        size=self.length))
+            conv_ensembles = torch.normal(0, 0.1, size=(self.n_ensembles, 
+                                                        self.length))
+            return dict(conv_params=conv_ensembles,
                         targets=self.labels,
                         input=self.inputs.squeeze())
 
@@ -231,13 +231,13 @@ class MnistOptimizee(torch.nn.Module):
                 print('New MNIST set used at generation {}'.format(
                     self.generation))
                 # append the outputs
-                self.targets.append(self.labels.cpu().numpy())
+                self.targets.append(self.labels)
 
             outputs, act1, act2 = self.conv_net(inputs)
             act3 = outputs
-            self.act_func['act1'] = act1.cpu().numpy()
-            self.act_func['act2'] = act2.cpu().numpy()
-            self.act_func['act3'] = act3.cpu().numpy()
+            self.act_func['act1'] = act1
+            self.act_func['act2'] = act2
+            self.act_func['act3'] = act3
             self.act_func['act1_mean'].append(act1.mean().item())
             self.act_func['act2_mean'].append(act2.mean().item())
             self.act_func['act3_mean'].append(act3.mean().item())
@@ -245,43 +245,42 @@ class MnistOptimizee(torch.nn.Module):
             self.act_func['act2_std'].append(act2.std().item())
             self.act_func['act3_std'].append(act3.std().item())
             self.output_activity_train.append(
-                F.softmax(outputs, dim=1).cpu().numpy())
+                F.softmax(outputs, dim=1))
             conv_loss = self.criterion(outputs, labels).item()
             self.train_loss.append(conv_loss)
             train_cost = _calculate_cost(_encode_targets(labels, 10),
-                                         F.softmax(outputs, dim=1).cpu().numpy(), 'MSE')
-            train_acc = score(labels.cpu().numpy(),
-                              np.argmax(F.softmax(outputs, dim=1).cpu().numpy(), 1))
+                                         F.softmax(outputs, dim=1), 'MSE')
+            train_acc = score(labels, np.argmax(F.softmax(outputs, dim=1), 1))
             print('Cost: ', train_cost)
             print('Accuracy: ', train_acc)
             print('Loss:', conv_loss)
-            self.train_cost.append(train_cost)
+            self.train_cost.append(train_cost.item())
             self.train_acc.append(train_acc)
             self.train_pred.append(
-                np.argmax(F.softmax(outputs, dim=1).cpu().numpy(), 1))
+                np.argmax(F.softmax(outputs, dim=1), 1))
 
             print('---- Test -----')
             test_output, act1, act2 = self.conv_net(self.test_input)
             test_loss = self.criterion(test_output, self.test_label).item()
-            self.test_act_func['act1'] = act1.cpu().numpy()
-            self.test_act_func['act2'] = act2.cpu().numpy()
+            self.test_act_func['act1'] = act1
+            self.test_act_func['act2'] = act2
             self.test_act_func['act1_mean'].append(act1.mean().item())
             self.test_act_func['act2_mean'].append(act2.mean().item())
             self.test_act_func['act3_mean'].append(test_output.mean().item())
             self.test_act_func['act1_std'].append(act1.std().item())
             self.test_act_func['act2_std'].append(act2.std().item())
             self.test_act_func['act3_std'].append(test_output.std().item())
-            test_output = test_output.cpu().numpy()
+            test_output = test_output
             self.test_act_func['act3'] = test_output
-            test_acc = score(self.test_label.cpu().numpy(),
+            test_acc = score(self.test_label,
                              np.argmax(test_output, 1))
-            test_cost = _calculate_cost(_encode_targets(self.test_label.cpu().numpy(), 10),
+            test_cost = _calculate_cost(_encode_targets(self.test_label, 10),
                                         test_output, 'MSE')
             print('Test accuracy', test_acc)
             print('Test loss: {}'.format(test_loss))
             self.test_acc.append(test_acc)
             self.test_pred.append(np.argmax(test_output, 1))
-            self.test_cost.append(test_cost)
+            self.test_cost.append(test_cost.item())
             self.output_activity_test.append(test_output)
             self.test_loss.append(test_loss)
             print('-----------------')
@@ -290,10 +289,11 @@ class MnistOptimizee(torch.nn.Module):
                 ds = self._shape_parameter_to_conv_net(c)
                 self.conv_net.set_parameter(ds)
                 params, _, _ = self.conv_net(inputs)
-                conv_params.append(params.t().cpu().numpy())
+                conv_params.append(params.t())
 
             outs = {
-                'conv_params': torch.tensor(conv_params).to(device),
+                # torch.tensor(conv_params).to(device),
+                'conv_params': torch.stack(conv_params),
                 'conv_loss': float(conv_loss),
                 'input': self.inputs.squeeze(),
                 'targets': self.labels
@@ -325,15 +325,15 @@ def _calculate_cost(y, y_hat, loss_function='CE'):
     :return: cost calculated according to `loss_function`
     """
     if loss_function == 'CE':
-        term1 = -y * np.log(y_hat)
-        term2 = (1 - y) * np.log(1 - y_hat)
-        return np.sum(term1 - term2)
+        term1 = -y * torch.log(y_hat)
+        term2 = (1 - y) * torch.log(1 - y_hat)
+        return torch.sum(term1 - term2)
     elif loss_function == 'MAE':
-        return np.sum(np.absolute(y_hat - y)) / len(y)
+        return torch.sum(torch.abs(y_hat - y)) / len(y)
     elif loss_function == 'MSE':
-        return np.sum((y_hat - y) ** 2) / len(y)
+        return torch.sum((y_hat - y) ** 2) / len(y)
     elif loss_function == 'norm':
-        return norm(y - y_hat)
+        return torch.norm(y - y_hat)
     else:
         raise KeyError(
             'Loss Function \'{}\' not understood.'.format(loss_function))
@@ -395,6 +395,15 @@ def test(net, iteration, test_loader_mnist, criterion):
         print('-----------------------')
     return ta, tl
 
+def convert_to_list(array):
+    if isinstance(array, list):
+        return [x.cpu().numpy() for x in array]
+    elif isinstance(array, dict):
+        for k, v in array.items():
+            if isinstance(v, torch.Tensor):
+                array[k] = v.cpu().numpy()
+        return array
+
 
 if __name__ == '__main__':
     root = '../multitask'
@@ -453,46 +462,47 @@ if __name__ == '__main__':
         if i % 500 == 0:
             print('Checkpointing at iteration {}'.format(i), flush=True)
             param_dict = {
-                'train_pred': model.train_pred,
-                'test_pred': model.test_pred,
+                'train_pred': convert_to_list(model.train_pred),
+                'test_pred': convert_to_list(model.test_pred),
                 'train_acc': model.train_acc,
                 'test_acc': model.test_acc,
                 'train_cost': model.train_cost,
                 'test_cost': model.test_cost,
-                'train_targets': model.targets,
-                'train_act': model.output_activity_train,
+                'train_targets': convert_to_list(model.targets),
+                'train_act': convert_to_list(model.output_activity_train),
                 'test_act': model.output_activity_test,
                 'test_targets': model.test_label.cpu().numpy(),
                 'ensemble': conv_ens.cpu().numpy(),
-                'act_func': model.act_func,
-                'test_act_func': model.test_act_func,
+                'act_func': convert_to_list(model.act_func),
+                'test_act_func': convert_to_list(model.test_act_func),
                 'train_loss': model.train_loss,
                 'test_loss': model.test_loss,
             }
             # torch.save(param_dict, 'conv_params_{}.pt'.format(i))
             act_func[str(i)] = {'train_act': model.act_func,
-                                'test_act':model.test_act_func}
+                                'test_act': model.test_act_func}
             test_losses.append(test(model.conv_net, i, model.data_loader.test_mnist_loader,
                                      nn.CrossEntropyLoss(reduction='sum')))
             # torch.save(test_losses, 'test_losses_{}.pt'.format(i))
 
     
     param_dict = {
-        'train_pred': model.train_pred,
-        'test_pred': model.test_pred,
+        'train_pred': convert_to_list(model.train_pred),
+        'test_pred': convert_to_list(model.test_pred),
         'train_acc': model.train_acc,
         'test_acc': model.test_acc,
         'train_cost': model.train_cost,
         'test_cost': model.test_cost,
-        'train_targets': model.targets,
-        'train_act': model.output_activity_train,
+        'train_targets': convert_to_list(model.targets),
+        'train_act': convert_to_list(model.output_activity_train),
         'test_act': model.output_activity_test,
         'test_targets': model.test_label.cpu().numpy(),
         'ensemble': conv_ens.cpu().numpy(),
-        'act_func': model.act_func,
-        'test_act_func': model.test_act_func,
+        'act_func': convert_to_list(model.act_func),
+        'test_act_func': convert_to_list(model.test_act_func),
         'train_loss': model.train_loss,
         'test_loss': model.test_loss,
+
     }
     # torch.save(param_dict, 'conv_params.pt')
     # act_func[str(i)] = {'train_act': copy.deepcopy(model.act_func),

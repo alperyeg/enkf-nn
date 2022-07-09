@@ -236,11 +236,13 @@ def test(epoch, test_loader_mnist, optimizer):
             test_accuracy += pred.eq(target.view_as(pred)).sum().item()
 
             if idx % 8 == 0:
-                tmp_acc = pred.eq(target.view_as(pred)).sum().item() * 100 / len(target)
+                tmp_acc = pred.eq(target.view_as(
+                    pred)).sum().item() * 100 / len(target)
                 ta.append(tmp_acc)
                 print('Test Loss {} in epoch {}, idx {}'.format(
                     loss.item(), epoch, idx))
-                print('Test accuracy {} in epoch {}, idx {}'.format(tmp_acc, epoch, idx))
+                print('Test accuracy {} in epoch {}, idx {}'.format(
+                    tmp_acc, epoch, idx))
 
     print('Test accuracy: {} Average test loss: {} epoch:{}'.format(
         100 * test_accuracy / len(test_loader_mnist.dataset),
@@ -253,7 +255,7 @@ def test(epoch, test_loader_mnist, optimizer):
     #         return True
     # else:
     #     return False
-    torch.save(ta, '{}_test_accuracy_iteration{}'.format(optimizer.__class__.__name__, 
+    torch.save(ta, '{}_test_accuracy_iteration{}'.format(optimizer.__class__.__name__,
                                                          epoch))
     return 100 * test_accuracy / len(test_loader_mnist.dataset)
 

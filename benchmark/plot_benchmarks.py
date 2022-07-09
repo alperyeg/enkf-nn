@@ -3,9 +3,11 @@ import numpy as np
 import seaborn as sns
 import torch
 import pandas as pd
-
-sns.set(style="darkgrid")
-
+# sns.set(style="white")
+sns.set(style="white")
+sns.set_color_codes("dark")
+sns.set_context("paper", font_scale=1.5, rc={
+                "lines.linewidth": 2., "grid.linewidth": 0.1})
 
 def simple_timing(fn='timings_ep1.pt'):
     timings = torch.load(fn)
@@ -26,7 +28,7 @@ def simple_timing(fn='timings_ep1.pt'):
     plt.yticks(y_pos, keys)
     plt.xlabel('times in [s]')
     plt.title('Timings in update step')
-    plt.savefig(fn.split('.')[0], format='eps')
+    plt.savefig(fn.split('.')[0], format='pdf')
     plt.show()
 
 
@@ -68,7 +70,7 @@ def to_dataframe(files):
         fits.append(sum(dat['1']['fit']))
         s = int(f.split('_')[1].split('ens')[1])
         x_label.append(s)
-    d = {'Cpp': np.unique(Cpps), 'Cup': np.unique(Cups),
+    d = {'C(U)': np.unique(Cpps), r'D(U)': np.unique(Cups),
          'update': np.unique(updates), 'indexing': model_outs, 'fit': fits, 
          'ensembles': x_label}
     df = pd.DataFrame.from_dict(d)
@@ -83,6 +85,7 @@ files = ['timings_ens100_ep1.pt', 'timings_ens1000_ep1.pt',
 # multiple_ensemble_timings(files, 'fit')
 data = to_dataframe(files)
 fig = sns.catplot(x='functions', y='time in [s]', hue='ensembles',
-                  data=data, kind='bar', palette="deep")
-fig.fig.savefig('benchmarks.eps', bbox_inches='tight', pad_inches=0.1)
+                  data=data, kind='bar', palette="deep", legend=False, height=6)
+fig.set(xlabel=None)
+fig.fig.savefig('benchmarks.pdf', bbox_inches='tight', pad_inches=0.1)
 # plt.show()
